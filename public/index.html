@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Umalator Global CLI - Web Interface</title>
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <div class="container">
+            <div class="left-panel">
+                <h3>
+                    <button id="add-skill-button" class="add-skill-header-button" title="Add new skill">+</button>
+                    Skills
+                </h3>
+                <div id="skills-container"></div>
+            </div>
+
+            <div class="right-panel">
+                <div class="section">
+                    <label for="config-select">Config File:</label>
+                    <select id="config-select"></select>
+                </div>
+
+                <div class="button-group">
+                    <button id="run-button" class="run-button">Run Calculations</button>
+                    <button id="reset-button" class="reset-button">Reset</button>
+                </div>
+
+                <h3>Terminal Output</h3>
+                <pre id="terminal-output"></pre>
+
+                <div class="section">
+                    <h3>Uma</h3>
+                    <div id="uma-container"></div>
+                </div>
+
+                <div class="section">
+                    <h3>Track</h3>
+                    <div id="track-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <script src="app.js"></script>
+    </body>
+</html>

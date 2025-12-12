@@ -934,7 +934,12 @@ function resetUmaSkills() {
 
     if (currentConfig.skills) {
         Object.keys(currentConfig.skills).forEach((skillName) => {
-            currentConfig.skills[skillName].discount = null;
+            const skill = currentConfig.skills[skillName];
+            if (skill.default !== undefined && skill.default !== null) {
+                currentConfig.skills[skillName].discount = skill.default;
+            } else {
+                currentConfig.skills[skillName].discount = null;
+            }
         });
     }
 

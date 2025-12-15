@@ -22,7 +22,7 @@ Then open your browser and navigate to `http://localhost:3000`.
 
 The web interface provides:
 
-- **Config File Management**: Select and switch between config files
+- **Config File Management**: Select and switch between config files (excluding `config.example.json`)
 - **Skills Editor**: Edit skill availability and discounts with checkboxes and dropdowns
 - **Track Editor**: Configure all track parameters (location, surface, distance, ground condition, weather, season, etc.)
 - **Uma Editor**: Configure uma stats, strategy, aptitudes, mood, unique skill, and active skills
@@ -45,55 +45,24 @@ npm run build
 # or
 node build.mjs
 
-# Run the CLI
+# Run the CLI (uses default.json)
 npm start
 # or
 node cli.js
+
+# Run with a specific config file
+node cli.js myconfig.json
 ```
 
 ### Options
 
-- `-c, --config <name>` - config file (default: `default.json`)
+- `[config]` - Config file name (positional argument, default: `default.json`)
+  - The config file is loaded from the `configs/` directory
+  - Example: `node cli.js myconfig.json` loads `configs/myconfig.json`
 
 ### Config File Format
 
-The config file (`configs/default.json`) should contain:
-
-```json
-{
-  "deterministic": false,
-  "confidenceInterval": 90,
-  "skills": {
-    "Right-Handed ◎": { "discount": 0 },
-    "Left-Handed ◎": { "discount": 10 },
-    "Tokyo Racecourse ◎": { "discount": null }
-  },
-  "track": {
-    "courseId": "",
-    "trackName": "Kyoto",
-    "distance": 3000,
-    "surface": "Turf",
-    "groundCondition": "Firm",
-    "weather": "Sunny",
-    "season": "Fall",
-    "numUmas": 9
-  },
-  "uma": {
-    "speed": 1200,
-    "stamina": 1200,
-    "power": 800,
-    "guts": 400,
-    "wisdom": 400,
-    "strategy": "Pace Chaser",
-    "distanceAptitude": "A",
-    "surfaceAptitude": "A",
-    "styleAptitude": "A",
-    "mood": null,
-    "skills": ["Right-Handed ◎", "Left-Handed ◎"],
-    "unique": "Anchors Aweigh!"
-  }
-}
-```
+See `configs/config.example.json` for the config file format.
 
 #### Simulation Settings
 
@@ -116,8 +85,8 @@ This ensures more accurate results for the most promising skills while still eva
 
 - Skills are specified by their **global English names** (e.g., "Right-Handed ◎" instead of skill IDs)
 - Each skill can have:
-  - `discount`: Percentage discount (0-100)
-  - `available`: Boolean to enable/disable the skill (defaults to `true` if omitted)
+  - `discount`: Percentage discount (0-100) or `null` to exclude the skill from evaluation
+  - `default`: Optional default discount value used by the web interface's reset function
 
 #### Track Settings
 
@@ -155,11 +124,13 @@ The tool outputs a table with the following columns:
 
 - **Skill**: Skill name
 - **Cost**: Skill cost (with discounts applied)
+- **Discount**: Discount percentage applied (or "-" if no discount)
+- **Sims**: Number of simulations run for this skill
 - **Mean**: Mean length gain from simulations
 - **Median**: Median length gain from simulations
-- **Min/Max**: Minimum and maximum length gains
-- **CI Lower/Upper**: Confidence interval bounds
-- **Mean/Cost**: Efficiency ratio (mean length / cost)
+- **Mean/Cost**: Efficiency ratio (mean length / cost, multiplied by 1000 for display)
+- **Min-Max**: Minimum and maximum length gains
+- **CI Lower-Upper**: Confidence interval bounds (e.g., "95% CI")
 
 Results are sorted by Mean/Cost in descending order.
 

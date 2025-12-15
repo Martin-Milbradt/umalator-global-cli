@@ -25,7 +25,7 @@ function getConfigFiles() {
 app.get("/api/configs", (req, res) => {
     try {
         const configs = getConfigFiles();
-        res.json(configs.map((c) => c.name));
+        res.json(configs.map((c) => c.name).filter((name) => name !== "config.example.json"));
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

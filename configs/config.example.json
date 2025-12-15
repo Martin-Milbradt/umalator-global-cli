@@ -3,7 +3,7 @@
   "confidenceInterval": 90,
   "skills": {
     "Right-Handed": { "discount": 0 },
-    "Left-Handed": { "discount": 10 },
+    "Left-Handed": { "discount": 10, "default": 0 },
     "Tokyo Racecourse": { "discount": null }
   },
   "track": {
@@ -27,7 +27,7 @@
     "surfaceAptitude": "A",
     "styleAptitude": "A",
     "mood": null,
-    "skills": ["Right-Handed ◎", "Left-Handed ◎"],
+    "skills": ["Right-Handed ◎", "Left-Handed ○"],
     "unique": "Anchors Aweigh!"
   }
 }

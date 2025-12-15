@@ -73,6 +73,38 @@ app.post("/api/config/:filename", (req, res) => {
     }
 });
 
+app.post("/api/config/:filename/duplicate", (req, res) => {
+    try {
+        const filename = req.params.filename;
+        const { newName } = req.body;
+
+        if (!newName || typeof newName !== "string" || !newName.trim()) {
+            res.status(400).json({ error: "newName is required and must be a non-empty string" });
+            return;
+        }
+
+        const sourcePath = join(configDir, filename);
+        const targetPath = join(configDir, newName.trim());
+
+        if (!existsSync(sourcePath)) {
+            res.status(404).json({ error: `Source config file "${filename}" not found` });
+            return;
+        }
+
+        if (existsSync(targetPath)) {
+            res.status(409).json({ error: `Config file "${newName.trim()}" already exists` });
+            return;
+        }
+
+        const content = readFileSync(sourcePath, "utf-8");
+        writeFileSync(targetPath, content, "utf-8");
+        notifyFileChange(newName.trim());
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 function notifyFileChange(filename) {
     fileChangeListeners.forEach((listener) => {
         try {

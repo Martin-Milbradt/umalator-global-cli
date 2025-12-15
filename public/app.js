@@ -952,6 +952,51 @@ document.getElementById("config-select").addEventListener("change", (e) => {
     loadConfig(e.target.value);
 });
 
+document.getElementById("duplicate-config-button").addEventListener("click", async () => {
+    if (!currentConfigFile) {
+        alert("No config file selected");
+        return;
+    }
+
+    const newName = prompt("Enter name for duplicated config file:");
+    if (!newName || !newName.trim()) {
+        return;
+    }
+
+    let trimmedName = newName.trim();
+    if (!trimmedName.toLowerCase().endsWith(".json")) {
+        trimmedName += ".json";
+    }
+
+    try {
+        const response = await fetch(`/api/config/${encodeURIComponent(currentConfigFile)}/duplicate`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ newName: trimmedName }),
+        });
+
+        if (!response.ok) {
+            let errorMessage = "Failed to duplicate config file";
+            try {
+                const error = await response.json();
+                errorMessage = error.error || errorMessage;
+            } catch (parseError) {
+                const text = await response.text();
+                errorMessage = text || errorMessage;
+            }
+            alert(`Error: ${errorMessage}`);
+            return;
+        }
+
+        await loadConfigFiles();
+        await loadConfig(trimmedName);
+    } catch (error) {
+        alert(`Error: ${error.message}`);
+    }
+});
+
 document.getElementById("run-button").addEventListener("click", runCalculations);
 
 document.getElementById("reset-button").addEventListener("click", resetUmaSkills);

@@ -38,6 +38,13 @@ app.get("/api/skillnames", (req, res) => {
     res.json(skillnames);
 });
 
+app.get("/api/skillmeta", (req, res) => {
+    const skillmetaPath = resolve(__dirname, "..", "uma-tools", "umalator-global", "skill_meta.json");
+    const content = readFileSync(skillmetaPath, "utf-8");
+    const skillmeta = JSON.parse(content);
+    res.json(skillmeta);
+});
+
 app.get("/api/coursedata", (req, res) => {
     try {
         const courseDataPath = resolve(__dirname, "..", "uma-tools", "umalator-global", "course_data.json");

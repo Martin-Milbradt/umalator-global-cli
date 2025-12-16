@@ -16,6 +16,7 @@ const tracknames = {
 };
 let skillnames = null;
 let skillNameToId = null;
+let skillmeta = null;
 let courseData = null;
 
 (async function loadSkillnamesOnInit() {
@@ -28,6 +29,17 @@ let courseData = null;
         throw new Error("Invalid skillnames data received");
     }
     skillNameToId = Object.fromEntries(Object.entries(skillnames).map(([id, names]) => [names[0], id]));
+})();
+
+(async function loadSkillmetaOnInit() {
+    const response = await fetch("/api/skillmeta");
+    if (!response.ok) {
+        throw new Error(`Failed to load skillmeta: ${response.status} ${response.statusText}`);
+    }
+    skillmeta = await response.json();
+    if (!skillmeta || typeof skillmeta !== "object") {
+        throw new Error("Invalid skillmeta data received");
+    }
 })();
 
 async function waitForCourseData() {
@@ -139,6 +151,13 @@ function findSkillId(skillName) {
     return null;
 }
 
+function getSkillGroupId(skillName) {
+    if (!skillmeta) return null;
+    const skillId = findSkillId(skillName);
+    if (!skillId) return null;
+    return skillmeta[skillId]?.groupId || null;
+}
+
 async function loadConfigFiles() {
     const response = await fetch("/api/configs");
     const files = await response.json();
@@ -167,6 +186,14 @@ async function loadConfig(filename) {
     renderSkills();
     renderTrack();
     renderUma();
+}
+
+function deleteSkill(skillName) {
+    const baseName = getBaseSkillName(skillName);
+    const skillsToDelete = [baseName, baseName + " ○", baseName + " ◎"];
+    skillsToDelete.forEach((skillToDelete) => {
+        delete currentConfig.skills[skillToDelete];
+    });
 }
 
 function renderSkills() {
@@ -271,6 +298,42 @@ function renderSkills() {
             discountButtonGroup.appendChild(button);
         });
 
+        const lockButton = document.createElement("button");
+        lockButton.className = "lock-button";
+        lockButton.dataset.skill = skillName;
+        const skillDefault = skill.default;
+        const isDefaultActive = skillDefault !== undefined && skillDefault !== null && currentDiscount === skillDefault;
+        const isDefaultNull =
+            (skillDefault === undefined || skillDefault === null) &&
+            (currentDiscount === null || currentDiscount === undefined);
+        const isLocked = isDefaultActive || isDefaultNull;
+        lockButton.textContent = isLocked ? "🔒" : "🔓";
+        lockButton.title = isLocked ? "Remove default" : "Set current discount as default";
+        lockButton.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const skillName = e.target.dataset.skill;
+            const currentDiscount = currentConfig.skills[skillName]?.discount;
+            const skillDefault = currentConfig.skills[skillName]?.default;
+            const isCurrentlyDefault =
+                (skillDefault !== undefined && skillDefault !== null && currentDiscount === skillDefault) ||
+                ((skillDefault === undefined || skillDefault === null) &&
+                    (currentDiscount === null || currentDiscount === undefined));
+            if (isCurrentlyDefault) {
+                // Currently at default - remove the default
+                delete currentConfig.skills[skillName].default;
+            } else {
+                // Set the current discount as default (null means no default)
+                if (currentDiscount === null || currentDiscount === undefined) {
+                    delete currentConfig.skills[skillName].default;
+                } else {
+                    currentConfig.skills[skillName].default = currentDiscount;
+                }
+            }
+            renderSkills();
+            autoSave();
+        });
+        discountButtonGroup.appendChild(lockButton);
+
         const addToUmaButton = document.createElement("button");
         addToUmaButton.className = "add-to-uma-button";
         const isInUmaSkills = umaSkills.includes(skillName);
@@ -300,24 +363,24 @@ function renderSkills() {
                     currentConfig.uma.skills.splice(skillIndex, 1);
                 }
             } else {
-                const otherVariant = getOtherVariant(skillName);
-                if (otherVariant) {
-                    const variantsToCheck = Array.isArray(otherVariant) ? otherVariant : [otherVariant];
-                    let replaced = false;
-                    variantsToCheck.forEach((variantName) => {
-                        const otherVariantIndex = currentConfig.uma.skills.indexOf(variantName);
-                        if (otherVariantIndex !== -1) {
-                            currentConfig.uma.skills[otherVariantIndex] = skillName;
+                // Use groupId to find and replace skills in the same group
+                const newSkillGroupId = getSkillGroupId(skillName);
+                let replaced = false;
+
+                if (newSkillGroupId) {
+                    for (let i = 0; i < currentConfig.uma.skills.length; i++) {
+                        const existingSkill = currentConfig.uma.skills[i];
+                        const existingGroupId = getSkillGroupId(existingSkill);
+                        if (existingGroupId === newSkillGroupId) {
+                            currentConfig.uma.skills[i] = skillName;
                             replaced = true;
+                            break;
                         }
-                    });
-                    if (!replaced && !currentConfig.uma.skills.includes(skillName)) {
-                        currentConfig.uma.skills.push(skillName);
                     }
-                } else {
-                    if (!currentConfig.uma.skills.includes(skillName)) {
-                        currentConfig.uma.skills.push(skillName);
-                    }
+                }
+
+                if (!replaced && !currentConfig.uma.skills.includes(skillName)) {
+                    currentConfig.uma.skills.push(skillName);
                 }
 
                 if (currentConfig.skills[skillName]) {
@@ -332,50 +395,35 @@ function renderSkills() {
         const skillNameSpan = document.createElement("span");
         skillNameSpan.className = "skill-name-text";
         skillNameSpan.textContent = skillName;
-
-        const editButton = document.createElement("button");
-        editButton.className = "edit-skill-button";
-        editButton.textContent = "✎";
-        editButton.title = "Edit skill name";
-        editButton.dataset.skill = skillName;
-        editButton.addEventListener("click", (e) => {
+        skillNameSpan.style.cursor = "pointer";
+        skillNameSpan.title = "Click to edit skill name";
+        skillNameSpan.dataset.skill = skillName;
+        skillNameSpan.addEventListener("click", (e) => {
             e.stopPropagation();
             const skillName = e.target.dataset.skill;
-            const skillItem = document.querySelector(`[data-skill="${skillName}"]`);
-            const skillNameSpan = skillItem.querySelector(".skill-name-text");
-            if (!skillNameSpan) return;
-
             const originalName = skillName;
             const skillNameInput = document.createElement("input");
             skillNameInput.type = "text";
             skillNameInput.className = "skill-name-input";
             skillNameInput.value = originalName;
-            skillNameInput.style.width = skillNameSpan.offsetWidth + "px";
+            skillNameInput.style.width = e.target.offsetWidth + "px";
             skillNameInput.style.minWidth = "100px";
 
             const restoreSpan = () => {
-                if (skillNameInput.parentNode) {
-                    const newSpan = document.createElement("span");
-                    newSpan.className = "skill-name-text";
-                    newSpan.textContent = originalName;
-                    skillNameInput.parentNode.replaceChild(newSpan, skillNameInput);
-                }
+                renderSkills();
             };
 
             const handleBlur = () => {
                 const newName = skillNameInput.value.trim();
-                if (newName && newName !== originalName && !currentConfig.skills[newName]) {
+                if (!newName) {
+                    deleteSkill(originalName);
+                    renderSkills();
+                    renderUma();
+                    autoSave();
+                } else if (newName !== originalName && !currentConfig.skills[newName]) {
                     const skillData = currentConfig.skills[originalName];
-                    delete currentConfig.skills[originalName];
+                    deleteSkill(originalName);
                     currentConfig.skills[newName] = skillData;
-
-                    if (currentConfig.uma && currentConfig.uma.skills) {
-                        const umaSkillIndex = currentConfig.uma.skills.indexOf(originalName);
-                        if (umaSkillIndex !== -1) {
-                            currentConfig.uma.skills[umaSkillIndex] = newName;
-                        }
-                    }
-
                     renderSkills();
                     renderUma();
                     autoSave();
@@ -394,14 +442,13 @@ function renderSkills() {
                 }
             });
 
-            skillNameSpan.parentNode.replaceChild(skillNameInput, skillNameSpan);
+            e.target.parentNode.replaceChild(skillNameInput, e.target);
             skillNameInput.focus();
             skillNameInput.select();
         });
 
         const label = document.createElement("label");
         label.appendChild(skillNameSpan);
-        label.appendChild(editButton);
 
         div.appendChild(addToUmaButton);
         div.appendChild(label);

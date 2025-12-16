@@ -63,15 +63,6 @@ function loadJson(filePath: string): any {
     return JSON.parse(readFileSync(resolvedPath, "utf-8"));
 }
 
-function findSkillIdByName(skillName: string, skillNames: Record<string, string[]>): string | null {
-    for (const [id, names] of Object.entries(skillNames)) {
-        if (names[0] === skillName) {
-            return id;
-        }
-    }
-    return null;
-}
-
 function findAllSkillIdsByName(skillName: string, skillNames: Record<string, string[]>): string[] {
     const matches: string[] = [];
     for (const [id, names] of Object.entries(skillNames)) {
@@ -246,7 +237,7 @@ function formatSurface(surface: number): string {
 }
 
 function formatTurn(turn: number): string {
-    return turn === 1 ? "Clockwise" : "Counter-clockwise";
+    return turn === 1 ? "Right" : "Left";
 }
 
 function processCourseData(rawCourse: any): CourseData {

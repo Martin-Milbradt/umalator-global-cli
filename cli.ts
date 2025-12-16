@@ -4,7 +4,14 @@ import { resolve } from "path";
 import { Worker } from "worker_threads";
 import { cpus } from "os";
 import { CourseData } from "../uma-tools/uma-skill-tools/CourseData";
-import { RaceParameters, GroundCondition, Grade, Mood, Time, Season } from "../uma-tools/uma-skill-tools/RaceParameters";
+import {
+    RaceParameters,
+    GroundCondition,
+    Grade,
+    Mood,
+    Time,
+    Season,
+} from "../uma-tools/uma-skill-tools/RaceParameters";
 import { HorseState, SkillSet } from "../uma-tools/components/HorseDefTypes";
 
 interface Config {
@@ -265,7 +272,7 @@ function parseSurface(surface: string | undefined): number | null {
     if (!surface) return null;
     const normalized = surface.toLowerCase().trim();
     if (normalized === "turf") return 1;
-    if (normalized === "dirt") return 0;
+    if (normalized === "dirt") return 2;
     return null;
 }
 

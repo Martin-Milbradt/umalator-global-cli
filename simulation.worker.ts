@@ -8,7 +8,7 @@ import skillmeta from "../uma-tools/skill_meta.json";
 interface SimulationTask {
     skillId: string;
     skillName: string;
-    course: CourseData;
+    courses: CourseData[];
     racedef: RaceParameters;
     baseUma: any;
     simOptions: any;
@@ -30,6 +30,8 @@ function convertSkillsToArray(skills: any): string[] {
 
 function runSkillSimulation(task: SimulationTask) {
     const results: number[] = [];
+    const courses = task.courses;
+    const numCourses = courses.length;
 
     // Convert serialized skills object to array of skill IDs
     const baseSkillIds = convertSkillsToArray(task.baseUma.skills);
@@ -39,11 +41,16 @@ function runSkillSimulation(task: SimulationTask) {
     const filteredSkillIds = skillIdsWithNewSkill.filter((id) => skillmeta[id]?.groupId !== newSkillGroupId);
     filteredSkillIds.push(task.skillId);
 
-    if (task.useRandomMood) {
+    // When using multiple courses, run simulations cycling through courses for fair comparison
+    // This ensures all skills run on the same track sequence (simulation i uses course i % numCourses)
+    const usePerSimulationMode = task.useRandomMood || numCourses > 1;
+
+    if (usePerSimulationMode) {
         const moods: Mood[] = [-2, -1, 0, 1, 2];
 
         for (let i = 0; i < task.numSimulations; i++) {
-            const mood = moods[i % moods.length];
+            const course = courses[i % numCourses];
+            const mood = task.useRandomMood ? moods[i % moods.length] : (task.baseUma.mood as Mood);
             const baseUma = new HorseState({ ...task.baseUma, mood: mood }).set("skills", SkillSet(baseSkillIds));
             const umaWithSkill = new HorseState({ ...task.baseUma, mood: mood }).set(
                 "skills",
@@ -55,7 +62,7 @@ function runSkillSimulation(task: SimulationTask) {
             }
             const { results: singleResults } = runComparison(
                 1,
-                task.course,
+                course,
                 task.racedef,
                 baseUma,
                 umaWithSkill,
@@ -68,7 +75,7 @@ function runSkillSimulation(task: SimulationTask) {
         const umaWithSkill = new HorseState(task.baseUma).set("skills", SkillSet(filteredSkillIds));
         const { results: batchResults } = runComparison(
             task.numSimulations,
-            task.course,
+            courses[0],
             task.racedef,
             baseUma,
             umaWithSkill,

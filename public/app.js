@@ -466,20 +466,57 @@ function calculateDropdownWidth(options) {
     return Math.max(maxWidth + 30, 60);
 }
 
+const DISTANCE_CATEGORIES = ["<Sprint>", "<Mile>", "<Medium>", "<Long>"];
+const RANDOM_LOCATION = "<Random>";
+
+function isRandomLocation(trackName) {
+    return trackName && trackName.toLowerCase().trim() === "<random>";
+}
+
+function isDistanceCategory(distance) {
+    if (!distance) return false;
+    const normalized = distance.toString().toLowerCase().trim();
+    return ["<sprint>", "<mile>", "<medium>", "<long>"].includes(normalized);
+}
+
 function getAvailableDistances(trackName, surface) {
-    if (!courseData || !trackName || !surface) {
-        return [];
+    if (!courseData || !surface) {
+        return DISTANCE_CATEGORIES;
+    }
+
+    const surfaceValue = surface.toLowerCase() === "turf" ? 1 : 2;
+    if (surfaceValue === null) {
+        return DISTANCE_CATEGORIES;
+    }
+
+    const isRandom = isRandomLocation(trackName);
+
+    // For <Random> location, find all distances available for the surface
+    if (isRandom) {
+        const distances = new Set();
+        for (const [courseId, rawCourse] of Object.entries(courseData)) {
+            if (!rawCourse || typeof rawCourse !== "object") {
+                continue;
+            }
+            if (rawCourse.surface === surfaceValue) {
+                distances.add(rawCourse.distance);
+            }
+        }
+        const distanceList = Array.from(distances)
+            .sort((a, b) => a - b)
+            .map((d) => d.toString());
+        return [...DISTANCE_CATEGORIES, ...distanceList];
+    }
+
+    // For specific location, find distances for that track
+    if (!trackName) {
+        return DISTANCE_CATEGORIES;
     }
 
     const normalizedTrackName = trackName.toLowerCase();
-    const surfaceValue = surface.toLowerCase() === "turf" ? 1 : 2;
-    if (surfaceValue === null) {
-        return [];
-    }
-
     const trackId = Object.keys(tracknames).find((id) => tracknames[id][1]?.toLowerCase() === normalizedTrackName);
     if (!trackId) {
-        return [];
+        return DISTANCE_CATEGORIES;
     }
 
     const distances = new Set();
@@ -496,9 +533,10 @@ function getAvailableDistances(trackName, surface) {
         }
     }
 
-    return Array.from(distances)
+    const distanceList = Array.from(distances)
         .sort((a, b) => a - b)
         .map((d) => d.toString());
+    return [...DISTANCE_CATEGORIES, ...distanceList];
 }
 
 function renderTrack() {
@@ -506,10 +544,11 @@ function renderTrack() {
     container.innerHTML = "";
     const track = currentConfig.track || {};
 
-    const locationOptions = Object.values(tracknames)
+    const trackLocations = Object.values(tracknames)
         .map((arr) => arr[1])
         .filter(Boolean)
         .sort();
+    const locationOptions = [RANDOM_LOCATION, ...trackLocations];
     const locationWidth = locationOptions.length > 0 ? calculateDropdownWidth(locationOptions) : 120;
 
     const distanceOptions = getAvailableDistances(track.trackName, track.surface);
@@ -587,7 +626,10 @@ function renderTrack() {
                 option.value = opt;
                 option.textContent = opt;
                 const trackValue = track[field.key];
-                if (trackValue === opt || trackValue?.toString() === opt) {
+                // Handle both string and number comparisons, case-insensitive for special values
+                const trackValueStr = trackValue?.toString()?.toLowerCase();
+                const optLower = opt.toLowerCase();
+                if (trackValue === opt || trackValueStr === opt || trackValueStr === optLower) {
                     option.selected = true;
                 }
                 input.appendChild(option);
@@ -628,26 +670,41 @@ function renderTrack() {
                 const distanceSelect = container.querySelector('select[data-key="distance"]');
                 if (distanceSelect) {
                     const currentDistance = currentConfig.track.distance;
+                    const currentDistanceStr = currentDistance?.toString();
                     distanceSelect.innerHTML = "";
                     newDistanceOptions.forEach((dist) => {
                         const option = document.createElement("option");
                         option.value = dist;
                         option.textContent = dist;
-                        if (dist === currentDistance?.toString()) {
+                        if (dist === currentDistanceStr || dist.toLowerCase() === currentDistanceStr?.toLowerCase()) {
                             option.selected = true;
                         }
                         distanceSelect.appendChild(option);
                     });
 
-                    if (!newDistanceOptions.includes(currentDistance?.toString()) && newDistanceOptions.length > 0) {
+                    // Check if current distance is still in options (case-insensitive for categories)
+                    const isCurrentDistanceValid = newDistanceOptions.some(
+                        (opt) => opt === currentDistanceStr || opt.toLowerCase() === currentDistanceStr?.toLowerCase()
+                    );
+                    if (!isCurrentDistanceValid && newDistanceOptions.length > 0) {
                         distanceSelect.value = newDistanceOptions[0];
-                        currentConfig.track.distance = parseInt(newDistanceOptions[0]);
+                        // Keep distance categories as strings, parse numbers
+                        if (isDistanceCategory(newDistanceOptions[0])) {
+                            currentConfig.track.distance = newDistanceOptions[0];
+                        } else {
+                            currentConfig.track.distance = parseInt(newDistanceOptions[0]);
+                        }
                     } else if (newDistanceOptions.length === 0) {
                         currentConfig.track.distance = null;
                     }
                 }
             } else if (field.key === "distance") {
-                currentConfig.track.distance = parseInt(value);
+                // Keep distance categories as strings, parse numbers
+                if (isDistanceCategory(value)) {
+                    currentConfig.track.distance = value;
+                } else {
+                    currentConfig.track.distance = parseInt(value);
+                }
             }
 
             autoSave();

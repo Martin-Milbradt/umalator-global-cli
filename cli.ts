@@ -276,28 +276,75 @@ function parseSurface(surface: string | undefined): number | null {
     return null;
 }
 
-function findMatchingCourses(
+function parseDistanceCategory(distance: string | number | undefined): number | null {
+    if (typeof distance === "number") return null;
+    if (!distance) return null;
+    const normalized = distance.toLowerCase().trim();
+    switch (normalized) {
+        case "<sprint>":
+            return 1;
+        case "<mile>":
+            return 2;
+        case "<medium>":
+            return 3;
+        case "<long>":
+            return 4;
+        default:
+            return null;
+    }
+}
+
+function isRandomLocation(trackName: string | undefined): boolean {
+    if (!trackName) return false;
+    return trackName.toLowerCase().trim() === "<random>";
+}
+
+function findMatchingCoursesWithFilters(
     courseData: Record<string, any>,
     trackNames: Record<string, string[]>,
-    trackName: string,
-    distance: number,
+    trackName: string | undefined,
+    distance: number | string | undefined,
     surface?: string
 ): Array<{ courseId: string; course: CourseData }> {
     const matches: Array<{ courseId: string; course: CourseData }> = [];
-    const normalizedTrackName = trackName.toLowerCase();
     const surfaceValue = parseSurface(surface);
+    const distanceCategory = parseDistanceCategory(distance);
+    const exactDistance = typeof distance === "number" ? distance : parseInt(distance as string);
+    const randomLocation = isRandomLocation(trackName);
+    const normalizedTrackName = trackName?.toLowerCase().trim();
 
     for (const [courseId, rawCourse] of Object.entries(courseData)) {
-        const courseTrackName = trackNames[rawCourse.raceTrackId.toString()]?.[1]?.toLowerCase();
-        if (courseTrackName === normalizedTrackName && rawCourse.distance === distance) {
-            if (surfaceValue !== null) {
-                if (rawCourse.surface !== surfaceValue) {
-                    continue;
-                }
-            }
-            const processedCourse = processCourseData(rawCourse);
-            matches.push({ courseId, course: processedCourse });
+        // Skip tracks without a known name
+        const courseTrackName = trackNames[rawCourse.raceTrackId.toString()]?.[1];
+        if (!courseTrackName) {
+            continue;
         }
+
+        // Filter by surface
+        if (surfaceValue !== null && rawCourse.surface !== surfaceValue) {
+            continue;
+        }
+
+        // Filter by track name (unless <Random>)
+        if (!randomLocation && normalizedTrackName) {
+            if (courseTrackName.toLowerCase() !== normalizedTrackName) {
+                continue;
+            }
+        }
+
+        // Filter by distance category or exact distance
+        if (distanceCategory !== null) {
+            if (rawCourse.distanceType !== distanceCategory) {
+                continue;
+            }
+        } else if (!isNaN(exactDistance)) {
+            if (rawCourse.distance !== exactDistance) {
+                continue;
+            }
+        }
+
+        const processedCourse = processCourseData(rawCourse);
+        matches.push({ courseId, course: processedCourse });
     }
 
     return matches;
@@ -312,7 +359,7 @@ function formatTrackDetails(
     courseId?: string,
     numUmas?: number
 ): string {
-    const trackName = trackNames[course.raceTrackId.toString()]?.[1] ?? "Unknown";
+    const trackName = trackNames[course.raceTrackId.toString()][1];
     const distanceType = formatDistanceType(course.distanceType);
     const surface = formatSurface(course.surface);
     const turn = formatTurn(course.turn);
@@ -482,45 +529,57 @@ async function main() {
         process.exit(1);
     }
 
-    let course: CourseData;
-    let selectedCourseId: string;
+    let courses: Array<{ courseId: string; course: CourseData }> = [];
+    let useMultipleCourses = false;
+    const trackNameValue = config.track.trackName;
+    const distanceValue = config.track.distance;
+
+    // Check if we're using random location or distance category
+    const isRandomTrack = isRandomLocation(trackNameValue);
+    const distanceCategory = parseDistanceCategory(distanceValue);
+    useMultipleCourses = isRandomTrack || distanceCategory !== null;
 
     if (config.track.courseId) {
-        selectedCourseId = config.track.courseId;
+        const selectedCourseId = config.track.courseId;
         const rawCourse = courseData[selectedCourseId];
         if (!rawCourse) {
             console.error(`Error: Course ${selectedCourseId} not found`);
             process.exit(1);
         }
-        course = processCourseData(rawCourse);
+        const course = processCourseData(rawCourse);
 
         if (course.turn === undefined || course.turn === null) {
             console.error(`Error: Course ${selectedCourseId} is missing turn field`);
             process.exit(1);
         }
-    } else if (config.track.trackName && config.track.distance) {
-        const surfaceFilter = config.track.surface ? ` and surface ${config.track.surface}` : "";
-        if (config.track.surface) {
-            console.log(`Filtering courses by surface: ${config.track.surface}`);
-        }
-        const matches = findMatchingCourses(
+        courses.push({ courseId: selectedCourseId, course });
+    } else if (trackNameValue && distanceValue !== undefined) {
+        const matches = findMatchingCoursesWithFilters(
             courseData,
             trackNames,
-            config.track.trackName,
-            config.track.distance,
+            trackNameValue,
+            distanceValue,
             config.track.surface
         );
+
         if (matches.length === 0) {
+            const locationDesc = isRandomTrack ? "<Random>" : trackNameValue;
+            const distanceDesc = distanceCategory !== null ? distanceValue : `${distanceValue}m`;
+            const surfaceFilter = config.track.surface ? ` and surface ${config.track.surface}` : "";
             console.error(
-                `Error: No courses found matching track "${config.track.trackName}" with distance ${config.track.distance}m${surfaceFilter}`
+                `Error: No courses found matching track "${locationDesc}" with distance ${distanceDesc}${surfaceFilter}`
             );
             process.exit(1);
         }
 
-        if (matches.length > 1) {
-            console.log(`Found ${matches.length} matching course(s):`);
+        // Sort courses by courseId for consistent ordering
+        matches.sort((a, b) => a.courseId.localeCompare(b.courseId));
+
+        if (useMultipleCourses) {
+            courses = matches;
+            console.log(`Found ${matches.length} matching course(s) for random selection:`);
             for (const { courseId, course: matchCourse } of matches) {
-                const trackName = trackNames[matchCourse.raceTrackId.toString()]?.[1] ?? "Unknown";
+                const trackName = trackNames[matchCourse.raceTrackId.toString()][1];
                 const distanceType = formatDistanceType(matchCourse.distanceType);
                 const surface = formatSurface(matchCourse.surface);
                 const turn = formatTurn(matchCourse.turn);
@@ -529,20 +588,37 @@ async function main() {
                 );
             }
             console.log("");
+        } else {
+            if (matches.length > 1) {
+                console.log(`Found ${matches.length} matching course(s):`);
+                for (const { courseId, course: matchCourse } of matches) {
+                    const trackName = trackNames[matchCourse.raceTrackId.toString()][1];
+                    const distanceType = formatDistanceType(matchCourse.distanceType);
+                    const surface = formatSurface(matchCourse.surface);
+                    const turn = formatTurn(matchCourse.turn);
+                    console.log(
+                        `  courseId: ${courseId} - ${trackName}, ${matchCourse.distance}m (${distanceType}), ${surface}, ${turn}`
+                    );
+                }
+                console.log("");
+            }
+            courses.push(matches[0]);
         }
 
-        const selected = matches[0];
-        course = selected.course;
-        selectedCourseId = selected.courseId;
-
-        if (course.turn === undefined || course.turn === null) {
-            console.error(`Error: Course ${selectedCourseId} is missing turn field`);
-            process.exit(1);
+        // Validate all courses have turn field
+        for (const { courseId, course } of courses) {
+            if (course.turn === undefined || course.turn === null) {
+                console.error(`Error: Course ${courseId} is missing turn field`);
+                process.exit(1);
+            }
         }
     } else {
         console.error("Error: config must specify either track.courseId or both track.trackName and track.distance");
         process.exit(1);
     }
+
+    const primaryCourse = courses[0].course;
+    const primaryCourseId = courses[0].courseId;
 
     const umaConfig = config.uma;
     const useRandomMood = umaConfig.mood === undefined;
@@ -680,17 +756,26 @@ async function main() {
         console.error("Error: No available skills specified in config");
         process.exit(1);
     }
-    console.log("");
-    const trackDetails = formatTrackDetails(
-        course,
-        trackNames,
-        config.track.groundCondition ?? "Good",
-        config.track.weather ?? "Sunny",
-        config.track.season ?? "Spring",
-        selectedCourseId,
-        config.track.numUmas ?? 18
-    );
-    console.log(trackDetails);
+    if (useMultipleCourses) {
+        const locationDesc = isRandomTrack ? "<Random>" : trackNameValue;
+        const distanceDesc = distanceCategory !== null ? distanceValue : `${distanceValue}m`;
+        console.log(
+            `Running on ${courses.length} tracks matching: ${locationDesc}, ${
+                config.track.surface ?? "Any"
+            }, ${distanceDesc}`
+        );
+    } else {
+        const trackDetails = formatTrackDetails(
+            primaryCourse,
+            trackNames,
+            config.track.groundCondition ?? "Good",
+            config.track.weather ?? "Sunny",
+            config.track.season ?? "Spring",
+            primaryCourseId,
+            config.track.numUmas ?? 18
+        );
+        console.log(trackDetails);
+    }
     console.log(
         `SPD: ${baseUma.speed}, STA: ${baseUma.stamina}, PWR: ${baseUma.power}, GUTS: ${baseUma.guts}, WIT: ${
             baseUma.wisdom
@@ -760,7 +845,7 @@ async function main() {
                 workerData: {
                     skillId,
                     skillName,
-                    course,
+                    courses: courses.map((c) => c.course),
                     racedef,
                     baseUma: baseUma.toJS(),
                     simOptions,

@@ -12,7 +12,23 @@ import {
     Time,
     Season,
 } from "../uma-tools/uma-skill-tools/RaceParameters";
-import { HorseState, SkillSet } from "../uma-tools/components/HorseDefTypes";
+import { HorseState as HorseStateBase, SkillSet } from "../uma-tools/components/HorseDefTypes";
+
+// HorseState extends immutable.js Record which TypeScript can't infer properly
+interface HorseStateInstance {
+    speed: number;
+    stamina: number;
+    power: number;
+    guts: number;
+    wisdom: number;
+    strategy: string;
+    distanceAptitude: string;
+    surfaceAptitude: string;
+    strategyAptitude: string;
+    skills: { forEach(fn: (value: string) => void): void };
+    toJS(): Record<string, unknown>;
+}
+const HorseState = HorseStateBase as unknown as new (props: Partial<HorseStateInstance>) => HorseStateInstance;
 
 interface Config {
     skills?: Record<string, { discount?: number | null }>;
@@ -365,8 +381,8 @@ function formatTrackDetails(
 function calculateSkillCost(
     skillId: string,
     skillMeta: Record<string, { baseCost: number; groupId?: number; order?: number }>,
-    skillConfig: { discount?: number },
-    baseUma?: HorseState,
+    skillConfig: { discount?: number | null },
+    baseUma?: HorseStateInstance,
     skillNames?: Record<string, string[]>,
     allConfigSkills?: Record<string, { discount?: number | null }>,
     skillNameToId?: Record<string, string>,
@@ -626,7 +642,7 @@ async function main() {
         grade: Grade.G1,
         popularity: 1,
         skillId: "",
-        orderRange: numUmas ? [1, numUmas] : null,
+        orderRange: numUmas ? [1, numUmas] : undefined,
         numUmas: numUmas,
     };
     const strategyName = umaConfig.strategy ? parseStrategyName(umaConfig.strategy) : "Senkou";
@@ -822,7 +838,6 @@ async function main() {
     }
 
     const concurrency = Math.min(availableSkillNames.length, cpus().length);
-    const workerPath = resolve(__dirname, "simulation.worker.js");
 
     const runSimulationInWorker = (
         skillName: string,
@@ -832,7 +847,7 @@ async function main() {
         return new Promise((resolve, reject) => {
             const skillId = skillNameToId[skillName];
 
-            const worker = new Worker(workerPath, {
+            const worker = new Worker(new URL("./simulation.worker.js", import.meta.url), {
                 workerData: {
                     skillId,
                     skillName,

@@ -1,11 +1,9 @@
 import * as esbuild from "esbuild";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
 
-const dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.join(dirname, "..", "uma-tools");
-const nodeModulesPath = path.join(dirname, "node_modules");
+const root = path.join(import.meta.dirname, "..", "uma-tools");
+const nodeModulesPath = path.join(import.meta.dirname, "node_modules");
 
 const resolveNodeModules = {
     name: "resolveNodeModules",
@@ -62,26 +60,98 @@ const redirectData = {
     },
 };
 
+const nodeBuiltins = [
+    "assert",
+    "async_hooks",
+    "buffer",
+    "child_process",
+    "cluster",
+    "console",
+    "constants",
+    "crypto",
+    "dgram",
+    "dns",
+    "domain",
+    "events",
+    "fs",
+    "http",
+    "http2",
+    "https",
+    "inspector",
+    "module",
+    "net",
+    "os",
+    "path",
+    "perf_hooks",
+    "process",
+    "punycode",
+    "querystring",
+    "readline",
+    "repl",
+    "stream",
+    "string_decoder",
+    "timers",
+    "tls",
+    "trace_events",
+    "tty",
+    "url",
+    "util",
+    "v8",
+    "vm",
+    "worker_threads",
+    "zlib",
+];
+
+const markNodeBuiltinsExternal = {
+    name: "markNodeBuiltinsExternal",
+    setup(build) {
+        build.onResolve({ filter: /.*/ }, (args) => {
+            if (args.path.startsWith("node:")) {
+                return { external: true };
+            }
+            if (nodeBuiltins.includes(args.path)) {
+                return { external: true };
+            }
+            return null;
+        });
+    },
+};
+
+const requirePolyfill = `
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+`;
+
 const buildOptions = {
     entryPoints: ["cli.ts"],
     bundle: true,
     platform: "node",
-    target: "node18",
-    format: "cjs",
+    target: "node20",
+    format: "esm",
     outfile: "cli.js",
     define: { CC_GLOBAL: "false" },
-    plugins: [resolveNodeModules, redirectData],
+    external: [...nodeBuiltins],
+    mainFields: ["module", "main"],
+    banner: {
+        js: requirePolyfill,
+    },
+    plugins: [markNodeBuiltinsExternal, resolveNodeModules, redirectData],
 };
 
 const workerBuildOptions = {
     entryPoints: ["simulation.worker.ts"],
     bundle: true,
     platform: "node",
-    target: "node18",
-    format: "cjs",
+    target: "node25",
+    format: "esm",
     outfile: "simulation.worker.js",
     define: { CC_GLOBAL: "false" },
-    plugins: [resolveNodeModules, redirectData],
+    external: [...nodeBuiltins],
+    mainFields: ["module", "main"],
+    banner: {
+        js: requirePolyfill,
+    },
+    plugins: [markNodeBuiltinsExternal, resolveNodeModules, redirectData],
 };
 
 try {

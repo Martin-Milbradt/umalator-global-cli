@@ -4,32 +4,26 @@ $ErrorActionPreference = "Stop"
 # Change to script directory
 Set-Location $PSScriptRoot
 
-# Clone or update uma-tools repository
-$umaToolsPath = "..\uma-tools"
+# Check if uma-tools exists, clone if it doesn't
+$umaToolsPath = Join-Path $PSScriptRoot ".." "uma-tools"
+if (-not (Test-Path $umaToolsPath)) {
+    Write-Host "uma-tools repository not found. Attempting to clone..."
+    $parentDir = Split-Path $PSScriptRoot -Parent
+    Push-Location $parentDir
 
-if (Test-Path $umaToolsPath) {
-    Write-Host "Pulling latest changes from uma-tools..."
-    Push-Location $umaToolsPath
-    git pull
+    $repoUrl = "https://github.com/alpha123/uma-tools"
+    Write-Host "Cloning from: $repoUrl (with submodules)..."
+    git clone --recurse-submodules $repoUrl
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Failed to pull uma-tools, continuing anyway..."
-    }
-
-    Write-Host "Updating submodules..."
-    git submodule update --init --recursive
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Failed to update submodules, continuing anyway..."
-    }
-    Pop-Location
-}
-else {
-    Write-Host "Initial setup, successive starts will be faster."
-    Write-Host "Cloning uma-tools repository with submodules..."
-    git clone --recurse-submodules https://github.com/alpha123/uma-tools $umaToolsPath
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to clone uma-tools!"
+        Write-Error "Failed to clone uma-tools repository. Please clone it manually to: $umaToolsPath"
+        Pop-Location
         exit 1
     }
+    Pop-Location
+    
+    # Initial setup steps
+    Write-Host "Initial setup, successive starts will be faster."
+    
     # Install dependencies
     Write-Host "Installing dependencies..."
     npm install
@@ -60,10 +54,25 @@ else {
     }
 }
 
+# Pull latest changes from uma-tools and all submodules
+Write-Host "Pulling latest changes from uma-tools and submodules..."
+if (Test-Path $umaToolsPath) {
+    Push-Location $umaToolsPath
+    git pull --recurse-submodules
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Failed to pull uma-tools, continuing anyway..."
+    }
+    # Ensure submodules are up to date with their remotes
+    git submodule update --remote --recursive
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Failed to update submodules, continuing anyway..."
+    }
+    Pop-Location
+}
+
 # Start the server in a new window
 $startCommand = "Set-Location '$PSScriptRoot'; node server.cjs"
 Start-Process powershell -ArgumentList "-NoExit", "-Command", $startCommand
 
 # Open the browser
 Start-Process "http://localhost:3000"
-

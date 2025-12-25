@@ -918,7 +918,7 @@ function renderUma() {
     const fields = [
         { key: "speed", label: "SPD", type: "number", width: 65 },
         { key: "stamina", label: "STA", type: "number", width: 65 },
-        { key: "power", label: "POW", type: "number", width: 65 },
+        { key: "power", label: "PWR", type: "number", width: 65 },
         { key: "guts", label: "GUT", type: "number", width: 65 },
         { key: "wisdom", label: "WIT", type: "number", width: 65 },
         {

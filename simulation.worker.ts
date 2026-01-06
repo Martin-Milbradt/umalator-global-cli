@@ -14,6 +14,12 @@ interface SimulationTask {
     simOptions: any;
     numSimulations: number;
     useRandomMood?: boolean;
+    useRandomSeason?: boolean;
+    useRandomWeather?: boolean;
+    useRandomCondition?: boolean;
+    weightedSeasons?: number[];
+    weightedWeathers?: number[];
+    weightedConditions?: number[];
     confidenceInterval?: number;
     returnRawResults?: boolean;
 }
@@ -43,14 +49,29 @@ function runSkillSimulation(task: SimulationTask) {
 
     // When using multiple courses, run simulations cycling through courses for fair comparison
     // This ensures all skills run on the same track sequence (simulation i uses course i % numCourses)
-    const usePerSimulationMode = task.useRandomMood || numCourses > 1;
+    const usePerSimulationMode = task.useRandomMood || numCourses > 1 ||
+        task.useRandomSeason || task.useRandomWeather || task.useRandomCondition;
 
     if (usePerSimulationMode) {
         const moods: Mood[] = [-2, -1, 0, 1, 2];
+        const seasons = task.weightedSeasons ?? [task.racedef.season];
+        const weathers = task.weightedWeathers ?? [task.racedef.weather];
+        const conditions = task.weightedConditions ?? [task.racedef.groundCondition];
 
         for (let i = 0; i < task.numSimulations; i++) {
             const course = courses[i % numCourses];
             const mood = task.useRandomMood ? moods[i % moods.length] : (task.baseUma.mood as Mood);
+            const season = task.useRandomSeason ? seasons[i % seasons.length] : task.racedef.season;
+            const weather = task.useRandomWeather ? weathers[i % weathers.length] : task.racedef.weather;
+            const condition = task.useRandomCondition ? conditions[i % conditions.length] : task.racedef.groundCondition;
+
+            const racedefForSim = {
+                ...task.racedef,
+                season,
+                weather,
+                groundCondition: condition,
+            };
+
             const baseUma = new HorseState({ ...task.baseUma, mood: mood }).set("skills", SkillSet(baseSkillIds));
             const umaWithSkill = new HorseState({ ...task.baseUma, mood: mood }).set(
                 "skills",
@@ -63,7 +84,7 @@ function runSkillSimulation(task: SimulationTask) {
             const { results: singleResults } = runComparison(
                 1,
                 course,
-                task.racedef,
+                racedefForSim,
                 baseUma,
                 umaWithSkill,
                 singleSimOptions

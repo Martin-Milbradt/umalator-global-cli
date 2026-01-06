@@ -306,6 +306,51 @@ function isRandomLocation(trackName: string | undefined): boolean {
     return trackName.toLowerCase().trim() === "<random>";
 }
 
+function isRandomValue(value: string | undefined): boolean {
+    if (!value) return false;
+    return value.toLowerCase().trim() === "<random>";
+}
+
+function shuffleArray<T>(array: T[]): T[] {
+    const result = [...array];
+    for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+}
+
+// Create weighted arrays for random selection (100 items based on percentages), then shuffle
+function createWeightedSeasonArray(): Season[] {
+    // 40% spring, 22% summer, 12% fall, 26% winter
+    const result: Season[] = [];
+    for (let i = 0; i < 40; i++) result.push(Season.Spring);
+    for (let i = 0; i < 22; i++) result.push(Season.Summer);
+    for (let i = 0; i < 12; i++) result.push(Season.Autumn);
+    for (let i = 0; i < 26; i++) result.push(Season.Winter);
+    return shuffleArray(result);
+}
+
+function createWeightedWeatherArray(): number[] {
+    // 58% sunny, 30% cloudy, 11% rain, 1% snow
+    const result: number[] = [];
+    for (let i = 0; i < 58; i++) result.push(1); // sunny
+    for (let i = 0; i < 30; i++) result.push(2); // cloudy
+    for (let i = 0; i < 11; i++) result.push(3); // rain
+    for (let i = 0; i < 1; i++) result.push(4); // snow
+    return shuffleArray(result);
+}
+
+function createWeightedConditionArray(): GroundCondition[] {
+    // 77% firm, 11% good, 7% soft, 5% heavy
+    const result: GroundCondition[] = [];
+    for (let i = 0; i < 77; i++) result.push(GroundCondition.Good); // firm
+    for (let i = 0; i < 11; i++) result.push(GroundCondition.Yielding); // good
+    for (let i = 0; i < 7; i++) result.push(GroundCondition.Soft); // soft
+    for (let i = 0; i < 5; i++) result.push(GroundCondition.Heavy); // heavy
+    return shuffleArray(result);
+}
+
 function findMatchingCoursesWithFilters(
     courseData: Record<string, any>,
     trackNames: Record<string, string[]>,
@@ -631,13 +676,28 @@ async function main() {
     const useRandomMood = umaConfig.mood === undefined;
     const moodValue: Mood | null = umaConfig.mood !== undefined ? (umaConfig.mood as Mood) : null;
     const numUmas = config.track.numUmas ?? 18;
+
+    // Check for random season/weather/condition
+    const useRandomSeason = isRandomValue(config.track.season);
+    const useRandomWeather = isRandomValue(config.track.weather);
+    const useRandomCondition = isRandomValue(config.track.groundCondition);
+    const weightedSeasons = useRandomSeason ? createWeightedSeasonArray() : null;
+    const weightedWeathers = useRandomWeather ? createWeightedWeatherArray() : null;
+    const weightedConditions = useRandomCondition ? createWeightedConditionArray() : null;
+
     const racedef: RaceParameters = {
         mood: moodValue ?? 2,
-        groundCondition: config.track.groundCondition
+        groundCondition: useRandomCondition
+            ? GroundCondition.Good
+            : config.track.groundCondition
             ? parseGroundCondition(config.track.groundCondition)
             : GroundCondition.Good,
-        weather: config.track.weather ? parseWeather(config.track.weather) : 1,
-        season: config.track.season ? parseSeason(config.track.season) : Season.Spring,
+        weather: useRandomWeather ? 1 : config.track.weather ? parseWeather(config.track.weather) : 1,
+        season: useRandomSeason
+            ? Season.Spring
+            : config.track.season
+            ? parseSeason(config.track.season)
+            : Season.Spring,
         time: Time.NoTime,
         grade: Grade.G1,
         popularity: 1,
@@ -763,6 +823,10 @@ async function main() {
         console.error("Error: No available skills specified in config");
         process.exit(1);
     }
+    const seasonDesc = useRandomSeason ? "<Random>" : config.track.season ?? "Spring";
+    const weatherDesc = useRandomWeather ? "<Random>" : config.track.weather ?? "Sunny";
+    const conditionDesc = useRandomCondition ? "<Random>" : config.track.groundCondition ?? "Good";
+
     if (useMultipleCourses) {
         const locationDesc = isRandomTrack ? "<Random>" : trackNameValue;
         const distanceDesc = distanceCategory !== null ? distanceValue : `${distanceValue}m`;
@@ -771,13 +835,14 @@ async function main() {
                 config.track.surface ?? "Any"
             }, ${distanceDesc}`
         );
+        console.log(`Season: ${seasonDesc}, Condition: ${conditionDesc}, Weather: ${weatherDesc}`);
     } else {
         const trackDetails = formatTrackDetails(
             primaryCourse,
             trackNames,
-            config.track.groundCondition ?? "Good",
-            config.track.weather ?? "Sunny",
-            config.track.season ?? "Spring",
+            conditionDesc,
+            weatherDesc,
+            seasonDesc,
             primaryCourseId,
             config.track.numUmas ?? 18
         );
@@ -857,6 +922,12 @@ async function main() {
                     simOptions,
                     numSimulations,
                     useRandomMood,
+                    useRandomSeason,
+                    useRandomWeather,
+                    useRandomCondition,
+                    weightedSeasons,
+                    weightedWeathers,
+                    weightedConditions,
                     confidenceInterval,
                     returnRawResults,
                 },

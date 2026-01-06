@@ -3,8 +3,7 @@
   "confidenceInterval": 90,
   "skills": {
     "Triumphant Pulse": {
-      "discount": 20,
-      "default": 20
+      "discount": null
     },
     "Shadow Break": {
       "discount": null
@@ -16,7 +15,7 @@
       "discount": null
     },
     "Professor of Curvature": {
-      "discount": 30,
+      "discount": 10,
       "default": 10
     },
     "Corner Adept ○": {
@@ -48,11 +47,11 @@
       "default": 10
     },
     "Straightaway Acceleration": {
-      "discount": 30,
+      "discount": 0,
       "default": 0
     },
     "Straightaway Recovery": {
-      "discount": 30
+      "discount": null
     },
     "It's On!": {
       "discount": 10,
@@ -76,31 +75,33 @@
       "discount": null
     },
     "Homestretch Haste": {
-      "discount": 10
+      "discount": 10,
+      "default": 0
     },
     "Anchors Aweigh!": {
-      "discount": 20
+      "discount": 20,
+      "default": 20
     },
     "Straightaway Adept": {
       "discount": null
     },
     "Focus": {
-      "discount": 40
+      "discount": 30
     },
     "Flashy☆Landing": {
       "discount": null
     },
     "Corner Recovery ○": {
-      "discount": null
+      "discount": 20
     },
     "Standard Distance": {
-      "discount": 30
+      "discount": 20
     },
     "Standard Distance ◎": {
-      "discount": 30
+      "discount": 20
     },
     "Standard Distance ○": {
-      "discount": 30
+      "discount": 20
     },
     "Acceleration": {
       "discount": null
@@ -127,10 +128,10 @@
       "discount": null
     },
     "Wet Conditions ○": {
-      "discount": null
+      "discount": 10
     },
     "Wet Conditions ◎": {
-      "discount": null
+      "discount": 10
     },
     "Escape Artist": {
       "discount": null
@@ -145,29 +146,24 @@
       "discount": null
     },
     "All I've Got": {
-      "discount": 20
+      "discount": null
     },
     "Productive Plan": {
       "discount": null
     },
-    "Resplendent Red Ace": {
+    "Rising Dragon": {
       "discount": null
     },
-    "Rising Dragon": {
-      "discount": 0,
-      "default": 0
-    },
     "Outer Swell": {
-      "discount": 0,
-      "default": 0
+      "discount": null
     },
     "Up-Tempo": {
-      "discount": 20,
+      "discount": 10,
       "default": 0
     },
     "Killer Tunes": {
-      "discount": 0,
-      "default": 0
+      "discount": 20,
+      "default": 20
     },
     "Late Surger Straightaways ◎": {
       "discount": null
@@ -188,28 +184,24 @@
       "discount": null
     },
     "Medium Straightaways": {
-      "discount": 0,
+      "discount": null,
       "default": 0
     },
     "Medium Straightaways ◎": {
-      "discount": 0,
-      "default": 0
+      "discount": null
     },
     "Medium Straightaways ○": {
-      "discount": 0,
-      "default": 0
+      "discount": null
     },
     "Rainy Days": {
-      "discount": 0,
+      "discount": null,
       "default": 0
     },
     "Rainy Days ◎": {
-      "discount": 0,
-      "default": 0
+      "discount": null
     },
     "Rainy Days ○": {
-      "discount": 0,
-      "default": 0
+      "discount": null
     },
     "This Dance Is for Vittoria!": {
       "discount": null
@@ -218,8 +210,7 @@
       "discount": null
     },
     "Pace Strategy": {
-      "discount": 0,
-      "default": 0
+      "discount": null
     },
     "Rosy Outlook": {
       "discount": null
@@ -228,34 +219,39 @@
       "discount": null
     },
     "Fighter": {
-      "discount": 30
+      "discount": 20
     },
     "On Your Left!": {
       "discount": null
     },
     "Slick Surge": {
-      "discount": 20
+      "discount": 0,
+      "default": 0
     },
     "Soft Step": {
       "discount": null
     },
     "Be Still": {
-      "discount": 20
+      "discount": null
     },
     "Certain Victory": {
       "discount": null
     },
     "1,500,000 CC": {
-      "discount": null
+      "discount": 20
     },
     "Fall Runner": {
-      "discount": 10
+      "discount": null
     },
     "Fall Runner ◎": {
-      "discount": 10
+      "discount": null
     },
     "Fall Runner ○": {
-      "discount": 10
+      "discount": null
+    },
+    "Let's Pump Some Iron!": {
+      "discount": 30,
+      "default": 30
     }
   },
   "track": {
@@ -270,26 +266,24 @@
   },
   "uma": {
     "distanceAptitude": "S",
-    "guts": 372,
-    "power": 1011,
+    "guts": 407,
+    "power": 1200,
     "mood": null,
     "skills": [
-      "Standard Distance ◎",
-      "Fall Runner ◎",
-      "Rainy Days ○",
-      "Medium Straightaways ○",
-      "Triumphant Pulse",
+      "Let's Pump Some Iron!",
+      "1,500,000 CC",
       "Killer Tunes",
-      "Rising Dragon",
-      "Professor of Curvature",
-      "Ignited Spirit SPD"
+      "Ignited Spirit SPD",
+      "Wet Conditions ○",
+      "It's On!",
+      "Professor of Curvature"
     ],
-    "speed": 1198,
-    "stamina": 741,
+    "speed": 1197,
+    "stamina": 934,
     "strategy": "Late Surger",
     "styleAptitude": "A",
     "surfaceAptitude": "A",
-    "unique": "Let's Pump Some Iron!",
-    "wisdom": 603
+    "unique": "Where There's a Will, There's a Way",
+    "wisdom": 538
   }
 }

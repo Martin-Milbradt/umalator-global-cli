@@ -57,7 +57,7 @@
       "discount": null
     },
     "Non-Standard Distance": {
-      "discount": null
+      "discount": 0
     },
     "Ramp Up": {
       "discount": null
@@ -90,7 +90,7 @@
       "default": 0
     },
     "Straightaway Recovery": {
-      "discount": null
+      "discount": 0
     },
     "It's On!": {
       "discount": 10,
@@ -126,10 +126,10 @@
       "discount": null
     },
     "Non-Standard Distance ◎": {
-      "discount": null
+      "discount": 0
     },
     "Non-Standard Distance ○": {
-      "discount": null
+      "discount": 0
     },
     "Right-Handed ◎": {
       "discount": null
@@ -220,13 +220,13 @@
       "discount": null
     },
     "Standard Distance": {
-      "discount": null
+      "discount": 0
     },
     "Standard Distance ◎": {
-      "discount": null
+      "discount": 0
     },
     "Standard Distance ○": {
-      "discount": null
+      "discount": 0
     },
     "Corner Connoisseur": {
       "discount": null
@@ -264,12 +264,12 @@
   },
   "track": {
     "courseId": "",
-    "distance": "<Medium>",
-    "groundCondition": "Firm",
+    "distance": "<Long>",
+    "groundCondition": "<Random>",
     "numUmas": 12,
-    "season": "Fall",
+    "season": "<Random>",
     "trackName": "<Random>",
-    "weather": "Sunny",
+    "weather": "<Random>",
     "surface": "Turf"
   },
   "uma": {
@@ -277,13 +277,15 @@
     "guts": 399,
     "power": 984,
     "mood": null,
-    "skills": [],
+    "skills": [
+      "Swinging Maestro"
+    ],
     "speed": 1200,
-    "stamina": 653,
+    "stamina": 900,
     "strategy": "Late Surger",
     "styleAptitude": "A",
     "surfaceAptitude": "A",
-    "unique": "Triumphant Pulse",
+    "unique": "Pure Heart",
     "wisdom": 786
   }
 }

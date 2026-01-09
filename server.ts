@@ -16,7 +16,25 @@ app.use(express.static(join(__dirname, "dist")));
 const configDir = join(__dirname, "configs");
 
 const configWatchers = new Map<string, ReturnType<typeof watch>>();
-const fileChangeListeners: express.Response[] = [];
+const fileChangeListeners: Set<express.Response> = new Set();
+const MAX_CONFIG_WATCHERS = 20;
+
+// Cached data for static JSON files (loaded once at startup)
+const umaToolsDir = resolve(__dirname, "..", "uma-tools", "umalator-global");
+let cachedSkillnames: Record<string, unknown> | null = null;
+let cachedSkillmeta: Record<string, unknown> | null = null;
+let cachedCourseData: Record<string, unknown> | null = null;
+
+function loadStaticData(): void {
+    try {
+        cachedSkillnames = JSON.parse(readFileSync(join(umaToolsDir, "skillnames.json"), "utf-8"));
+        cachedSkillmeta = JSON.parse(readFileSync(join(umaToolsDir, "skill_meta.json"), "utf-8"));
+        cachedCourseData = JSON.parse(readFileSync(join(umaToolsDir, "course_data.json"), "utf-8"));
+    } catch (error) {
+        console.error("Error loading static data:", error);
+    }
+}
+loadStaticData();
 
 interface ConfigFile {
     name: string;
@@ -31,7 +49,7 @@ function getConfigFiles(): ConfigFile[] {
     }));
 }
 
-app.get("/api/configs", (req, res) => {
+app.get("/api/configs", (_req, res) => {
     try {
         const configs = getConfigFiles();
         res.json(configs.map((c) => c.name).filter((name) => name !== "config.example.json"));
@@ -41,30 +59,28 @@ app.get("/api/configs", (req, res) => {
     }
 });
 
-app.get("/api/skillnames", (req, res) => {
-    const skillnamesPath = resolve(__dirname, "..", "uma-tools", "umalator-global", "skillnames.json");
-    const content = readFileSync(skillnamesPath, "utf-8");
-    const skillnames = JSON.parse(content);
-    res.json(skillnames);
-});
-
-app.get("/api/skillmeta", (req, res) => {
-    const skillmetaPath = resolve(__dirname, "..", "uma-tools", "umalator-global", "skill_meta.json");
-    const content = readFileSync(skillmetaPath, "utf-8");
-    const skillmeta = JSON.parse(content);
-    res.json(skillmeta);
-});
-
-app.get("/api/coursedata", (req, res) => {
-    try {
-        const courseDataPath = resolve(__dirname, "..", "uma-tools", "umalator-global", "course_data.json");
-        const content = readFileSync(courseDataPath, "utf-8");
-        const courseData = JSON.parse(content);
-        res.json(courseData);
-    } catch (error) {
-        const err = error as Error;
-        res.status(500).json({ error: err.message });
+app.get("/api/skillnames", (_req, res) => {
+    if (!cachedSkillnames) {
+        res.status(500).json({ error: "Skillnames data not loaded" });
+        return;
     }
+    res.json(cachedSkillnames);
+});
+
+app.get("/api/skillmeta", (_req, res) => {
+    if (!cachedSkillmeta) {
+        res.status(500).json({ error: "Skillmeta data not loaded" });
+        return;
+    }
+    res.json(cachedSkillmeta);
+});
+
+app.get("/api/coursedata", (_req, res) => {
+    if (!cachedCourseData) {
+        res.status(500).json({ error: "Course data not loaded" });
+        return;
+    }
+    res.json(cachedCourseData);
 });
 
 app.get("/api/config/:filename", (req, res) => {
@@ -127,13 +143,27 @@ app.post("/api/config/:filename/duplicate", (req, res) => {
 });
 
 function notifyFileChange(filename: string): void {
-    fileChangeListeners.forEach((listener) => {
+    for (const listener of fileChangeListeners) {
         try {
             listener.write(`data: ${JSON.stringify({ type: "fileChanged", filename })}\n\n`);
         } catch (error) {
             console.error("Error notifying file change:", error);
+            // Remove failed listener
+            fileChangeListeners.delete(listener);
         }
-    });
+    }
+}
+
+function cleanupOldestWatcher(): void {
+    if (configWatchers.size >= MAX_CONFIG_WATCHERS) {
+        const [oldestKey, oldestWatcher] = configWatchers.entries().next().value;
+        try {
+            oldestWatcher.close();
+        } catch (e) {
+            // Ignore close errors
+        }
+        configWatchers.delete(oldestKey);
+    }
 }
 
 function watchConfigFile(filename: string): void {
@@ -141,9 +171,12 @@ function watchConfigFile(filename: string): void {
         return;
     }
 
+    // Limit number of watchers to prevent file descriptor exhaustion
+    cleanupOldestWatcher();
+
     try {
         const filePath = join(configDir, filename);
-        const watcher = watch(filePath, (eventType, changedFilename) => {
+        const watcher = watch(filePath, (eventType, _changedFilename) => {
             if (eventType === "change") {
                 setTimeout(() => {
                     notifyFileChange(filename);
@@ -153,6 +186,11 @@ function watchConfigFile(filename: string): void {
 
         watcher.on("error", (error) => {
             console.error(`Error watching file ${filename}:`, error);
+            try {
+                watcher.close();
+            } catch (e) {
+                // Ignore close errors
+            }
             configWatchers.delete(filename);
         });
 
@@ -161,6 +199,18 @@ function watchConfigFile(filename: string): void {
         console.error(`Error setting up watcher for ${filename}:`, error);
     }
 }
+
+// Cleanup watchers on process exit
+process.on("exit", () => {
+    for (const watcher of configWatchers.values()) {
+        try {
+            watcher.close();
+        } catch (e) {
+            // Ignore close errors
+        }
+    }
+    configWatchers.clear();
+});
 
 app.get("/api/run", (req, res) => {
     const configFile = req.query.configFile as string | undefined;

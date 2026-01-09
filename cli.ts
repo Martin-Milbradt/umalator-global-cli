@@ -430,7 +430,7 @@ function calculateSkillCost(
     baseUma?: HorseStateInstance,
     skillNames?: Record<string, string[]>,
     allConfigSkills?: Record<string, { discount?: number | null }>,
-    skillNameToId?: Record<string, string>,
+    skillIdToName?: Record<string, string>,
     skillNameToConfigKey?: Record<string, string>
 ): number {
     const currentSkill = skillMeta[skillId];
@@ -475,15 +475,13 @@ function calculateSkillCost(
                     }
                 }
 
-                // Find the skill name for this skillId to get its config (if it's in the config)
+                // Use direct lookup via skillIdToName instead of searching through skillNameToId
                 let otherDiscount = 0;
-                if (allConfigSkills && skillNameToId && skillNameToConfigKey) {
-                    for (const [skillName, id] of Object.entries(skillNameToId)) {
-                        if (id === otherSkillId) {
-                            const configKey = skillNameToConfigKey[skillName] || skillName;
-                            otherDiscount = allConfigSkills[configKey]?.discount ?? 0;
-                            break;
-                        }
+                if (allConfigSkills && skillIdToName && skillNameToConfigKey) {
+                    const skillName = skillIdToName[otherSkillId];
+                    if (skillName) {
+                        const configKey = skillNameToConfigKey[skillName] || skillName;
+                        otherDiscount = allConfigSkills[configKey]?.discount ?? 0;
                     }
                 }
 
@@ -982,7 +980,7 @@ async function main() {
             baseUma,
             skillNames,
             configSkills,
-            skillNameToId,
+            skillIdToName,
             skillNameToConfigKey
         );
         skillRawResultsMap.set(skillName, {

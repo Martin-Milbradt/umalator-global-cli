@@ -70,6 +70,27 @@ let skillNameToId: Record<string, string> | null = null;
 let skillmeta: SkillMeta | null = null;
 let courseData: CourseData | null = null;
 
+// Cache for variant lookups (built once after skillnames loads)
+let variantCache: Map<string, string[]> | null = null;
+
+function buildVariantCache(): void {
+    if (!skillnames) return;
+    variantCache = new Map();
+    for (const [id, names] of Object.entries(skillnames)) {
+        if (!Array.isArray(names) || !names[0]) continue;
+        const name = names[0];
+        // Match names ending with " ○" or " ◎"
+        const match = name.match(/^(.+) ([○◎])$/);
+        if (match) {
+            const baseName = match[1];
+            if (!variantCache.has(baseName)) {
+                variantCache.set(baseName, []);
+            }
+            variantCache.get(baseName)!.push(name);
+        }
+    }
+}
+
 (async function loadSkillnamesOnInit() {
     const response = await fetch("/api/skillnames");
     if (!response.ok) {
@@ -80,6 +101,7 @@ let courseData: CourseData | null = null;
         throw new Error("Invalid skillnames data received");
     }
     skillNameToId = Object.fromEntries(Object.entries(skillnames).map(([id, names]) => [names[0], id]));
+    buildVariantCache();
 })();
 
 (async function loadSkillmetaOnInit() {
@@ -134,23 +156,12 @@ function getBaseSkillName(skillName: string): string {
 }
 
 function getVariantsForBaseName(baseName: string): string[] {
-    if (!skillnames) return [];
-    const variants: string[] = [];
-
-    for (const [id, names] of Object.entries(skillnames)) {
-        if (Array.isArray(names) && names[0]) {
-            const name = names[0];
-            if (name === baseName + " ○" || name === baseName + " ◎") {
-                variants.push(name);
-            }
-        }
-    }
-
-    return variants;
+    if (!variantCache) return [];
+    return variantCache.get(baseName) || [];
 }
 
 function getOtherVariant(skillName: string): string | string[] | null {
-    if (!skillnames) return null;
+    if (!variantCache) return null;
     const baseName = getBaseSkillName(skillName);
     const hasCircle = skillName.endsWith(" ○");
     const hasDoubleCircle = skillName.endsWith(" ◎");
@@ -164,11 +175,11 @@ function getOtherVariant(skillName: string): string | string[] | null {
     }
 
     const otherVariantName = hasCircle ? baseName + " ◎" : baseName + " ○";
+    const variants = variantCache.get(baseName) || [];
 
-    for (const [id, names] of Object.entries(skillnames)) {
-        if (Array.isArray(names) && names[0] === otherVariantName) {
-            return otherVariantName;
-        }
+    // Check if the other variant exists in the cache
+    if (variants.includes(otherVariantName)) {
+        return otherVariantName;
     }
 
     return null;
@@ -314,12 +325,14 @@ function renderSkills(): void {
         }
     });
 
+    // Pre-compute skill IDs to avoid O(n²) lookups in sort comparator
+    const skillIdCache = new Map<string, number>();
+    for (const name of skillsToRender) {
+        const idStr = findSkillId(name);
+        skillIdCache.set(name, idStr ? parseInt(idStr) : 0);
+    }
     const sortedSkillNames = Array.from(skillsToRender).sort((a, b) => {
-        const idAStr = findSkillId(a);
-        const idBStr = findSkillId(b);
-        const idA = idAStr ? parseInt(idAStr) : 0;
-        const idB = idBStr ? parseInt(idBStr) : 0;
-        return idA - idB;
+        return (skillIdCache.get(a) || 0) - (skillIdCache.get(b) || 0);
     });
 
     sortedSkillNames.forEach((skillName) => {
@@ -580,129 +593,7 @@ function renderSkills(): void {
         container.appendChild(div);
     });
 
-    container.querySelectorAll("[data-discount]").forEach((button) => {
-        button.addEventListener("click", (e) => {
-            const target = e.target as HTMLElement;
-            const skillName = target.dataset.skill;
-            const discountValue = target.dataset.discount;
-            if (!skillName || !discountValue || !currentConfig) return;
-            const discount = discountValue === "-" ? null : parseInt(discountValue);
-            if (!currentConfig.skills[skillName]) {
-                currentConfig.skills[skillName] = { discount: null };
-            }
-
-            const currentDiscount = currentConfig.skills[skillName].discount;
-            const isCurrentlyActive =
-                (discount === null && (currentDiscount === null || currentDiscount === undefined)) ||
-                (discount !== null && currentDiscount === discount);
-
-            if (isCurrentlyActive) {
-                const skillDefault = currentConfig.skills[skillName]?.default;
-                const isCurrentlyDefault =
-                    (skillDefault !== undefined && skillDefault !== null && currentDiscount === skillDefault) ||
-                    ((skillDefault === undefined || skillDefault === null) &&
-                        (currentDiscount === null || currentDiscount === undefined));
-
-                if (isCurrentlyDefault) {
-                    delete currentConfig.skills[skillName].default;
-                    const baseName = getBaseSkillName(skillName);
-                    const variants = getVariantsForBaseName(baseName);
-                    if (variants.length === 2) {
-                        variants.forEach((variantName) => {
-                            if (currentConfig.skills[variantName]) {
-                                delete currentConfig.skills[variantName].default;
-                            }
-                        });
-                    } else {
-                        const otherVariant = getOtherVariant(skillName);
-                        if (otherVariant) {
-                            const variantsToUpdate = Array.isArray(otherVariant) ? otherVariant : [otherVariant];
-                            variantsToUpdate.forEach((variantName) => {
-                                if (currentConfig.skills[variantName]) {
-                                    delete currentConfig.skills[variantName].default;
-                                }
-                            });
-                        }
-                    }
-                } else {
-                    if (currentDiscount === null || currentDiscount === undefined) {
-                        delete currentConfig.skills[skillName].default;
-                        const baseName = getBaseSkillName(skillName);
-                        const variants = getVariantsForBaseName(baseName);
-                        if (variants.length === 2) {
-                            variants.forEach((variantName) => {
-                                if (currentConfig.skills[variantName]) {
-                                    delete currentConfig.skills[variantName].default;
-                                }
-                            });
-                        } else {
-                            const otherVariant = getOtherVariant(skillName);
-                            if (otherVariant) {
-                                const variantsToUpdate = Array.isArray(otherVariant) ? otherVariant : [otherVariant];
-                                variantsToUpdate.forEach((variantName) => {
-                                    if (currentConfig.skills[variantName]) {
-                                        delete currentConfig.skills[variantName].default;
-                                    }
-                                });
-                            }
-                        }
-                    } else {
-                        currentConfig.skills[skillName].default = currentDiscount;
-                        const baseName = getBaseSkillName(skillName);
-                        const variants = getVariantsForBaseName(baseName);
-                        if (variants.length === 2) {
-                            variants.forEach((variantName) => {
-                                if (currentConfig.skills[variantName]) {
-                                    currentConfig.skills[variantName].default = currentDiscount;
-                                }
-                            });
-                        } else {
-                            const otherVariant = getOtherVariant(skillName);
-                            if (otherVariant) {
-                                const variantsToUpdate = Array.isArray(otherVariant) ? otherVariant : [otherVariant];
-                                variantsToUpdate.forEach((variantName) => {
-                                    if (currentConfig.skills[variantName]) {
-                                        currentConfig.skills[variantName].default = currentDiscount;
-                                    }
-                                });
-                            }
-                        }
-                    }
-                }
-            } else {
-                currentConfig.skills[skillName].discount = discount === null ? null : discount;
-
-                const baseName = getBaseSkillName(skillName);
-                const variants = getVariantsForBaseName(baseName);
-                if (variants.length === 2) {
-                    if (currentConfig.skills[baseName]) {
-                        currentConfig.skills[baseName].discount = discount;
-                    }
-                    variants.forEach((variantName) => {
-                        if (currentConfig.skills[variantName]) {
-                            currentConfig.skills[variantName].discount = discount;
-                        }
-                    });
-                } else {
-                    const otherVariant = getOtherVariant(skillName);
-                    if (otherVariant) {
-                        const variantsToUpdate = Array.isArray(otherVariant) ? otherVariant : [otherVariant];
-                        variantsToUpdate.forEach((variantName) => {
-                            if (currentConfig.skills[variantName]) {
-                                currentConfig.skills[variantName].discount = discount;
-                            }
-                        });
-                        if (currentConfig.skills[baseName] && !skillName.endsWith(" ○") && !skillName.endsWith(" ◎")) {
-                            currentConfig.skills[baseName].discount = discount;
-                        }
-                    }
-                }
-            }
-
-            renderSkills();
-            autoSave();
-        });
-    });
+    // Event delegation is set up once via setupSkillsContainerDelegation()
 }
 
 function calculateDropdownWidth(options: string[]): number {
@@ -1375,4 +1266,136 @@ if (addSkillButton) {
     });
 }
 
+// Set up event delegation for discount buttons (single listener instead of per-button)
+function setupSkillsContainerDelegation(): void {
+    const container = document.getElementById("skills-container");
+    if (!container) return;
+
+    container.addEventListener("click", (e) => {
+        const target = e.target as HTMLElement;
+        // Only handle discount button clicks
+        if (target.dataset.discount === undefined) return;
+
+        const skillName = target.dataset.skill;
+        const discountValue = target.dataset.discount;
+        if (!skillName || !discountValue || !currentConfig) return;
+        const discount = discountValue === "-" ? null : parseInt(discountValue);
+        if (!currentConfig.skills[skillName]) {
+            currentConfig.skills[skillName] = { discount: null };
+        }
+
+        const currentDiscount = currentConfig.skills[skillName].discount;
+        const isCurrentlyActive =
+            (discount === null && (currentDiscount === null || currentDiscount === undefined)) ||
+            (discount !== null && currentDiscount === discount);
+
+        if (isCurrentlyActive) {
+            const skillDefault = currentConfig.skills[skillName]?.default;
+            const isCurrentlyDefault =
+                (skillDefault !== undefined && skillDefault !== null && currentDiscount === skillDefault) ||
+                ((skillDefault === undefined || skillDefault === null) &&
+                    (currentDiscount === null || currentDiscount === undefined));
+
+            if (isCurrentlyDefault) {
+                delete currentConfig.skills[skillName].default;
+                const baseName = getBaseSkillName(skillName);
+                const variants = getVariantsForBaseName(baseName);
+                if (variants.length === 2) {
+                    variants.forEach((variantName) => {
+                        if (currentConfig.skills[variantName]) {
+                            delete currentConfig.skills[variantName].default;
+                        }
+                    });
+                } else {
+                    const otherVariant = getOtherVariant(skillName);
+                    if (otherVariant) {
+                        const variantsToUpdate = Array.isArray(otherVariant) ? otherVariant : [otherVariant];
+                        variantsToUpdate.forEach((variantName) => {
+                            if (currentConfig.skills[variantName]) {
+                                delete currentConfig.skills[variantName].default;
+                            }
+                        });
+                    }
+                }
+            } else {
+                if (currentDiscount === null || currentDiscount === undefined) {
+                    delete currentConfig.skills[skillName].default;
+                    const baseName = getBaseSkillName(skillName);
+                    const variants = getVariantsForBaseName(baseName);
+                    if (variants.length === 2) {
+                        variants.forEach((variantName) => {
+                            if (currentConfig.skills[variantName]) {
+                                delete currentConfig.skills[variantName].default;
+                            }
+                        });
+                    } else {
+                        const otherVariant = getOtherVariant(skillName);
+                        if (otherVariant) {
+                            const variantsToUpdate = Array.isArray(otherVariant) ? otherVariant : [otherVariant];
+                            variantsToUpdate.forEach((variantName) => {
+                                if (currentConfig.skills[variantName]) {
+                                    delete currentConfig.skills[variantName].default;
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    currentConfig.skills[skillName].default = currentDiscount;
+                    const baseName = getBaseSkillName(skillName);
+                    const variants = getVariantsForBaseName(baseName);
+                    if (variants.length === 2) {
+                        variants.forEach((variantName) => {
+                            if (currentConfig.skills[variantName]) {
+                                currentConfig.skills[variantName].default = currentDiscount;
+                            }
+                        });
+                    } else {
+                        const otherVariant = getOtherVariant(skillName);
+                        if (otherVariant) {
+                            const variantsToUpdate = Array.isArray(otherVariant) ? otherVariant : [otherVariant];
+                            variantsToUpdate.forEach((variantName) => {
+                                if (currentConfig.skills[variantName]) {
+                                    currentConfig.skills[variantName].default = currentDiscount;
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        } else {
+            currentConfig.skills[skillName].discount = discount === null ? null : discount;
+
+            const baseName = getBaseSkillName(skillName);
+            const variants = getVariantsForBaseName(baseName);
+            if (variants.length === 2) {
+                if (currentConfig.skills[baseName]) {
+                    currentConfig.skills[baseName].discount = discount;
+                }
+                variants.forEach((variantName) => {
+                    if (currentConfig.skills[variantName]) {
+                        currentConfig.skills[variantName].discount = discount;
+                    }
+                });
+            } else {
+                const otherVariant = getOtherVariant(skillName);
+                if (otherVariant) {
+                    const variantsToUpdate = Array.isArray(otherVariant) ? otherVariant : [otherVariant];
+                    variantsToUpdate.forEach((variantName) => {
+                        if (currentConfig.skills[variantName]) {
+                            currentConfig.skills[variantName].discount = discount;
+                        }
+                    });
+                    if (currentConfig.skills[baseName] && !skillName.endsWith(" ○") && !skillName.endsWith(" ◎")) {
+                        currentConfig.skills[baseName].discount = discount;
+                    }
+                }
+            }
+        }
+
+        renderSkills();
+        autoSave();
+    });
+}
+
+setupSkillsContainerDelegation();
 loadConfigFiles();

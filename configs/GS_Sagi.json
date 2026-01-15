@@ -7,8 +7,7 @@
       "default": 10
     },
     "Shadow Break": {
-      "discount": 10,
-      "default": 10
+      "discount": null
     },
     "Behold Thine Emperor's Divine Might": {
       "discount": null
@@ -19,6 +18,9 @@
     "Standing By": {
       "discount": 0,
       "default": 0
+    },
+    "Nemesis": {
+      "discount": null
     },
     "Professor of Curvature": {
       "discount": 10,
@@ -38,10 +40,16 @@
       "discount": null
     },
     "Pressure": {
-      "discount": null
+      "discount": 10,
+      "default": 10
+    },
+    "Go-Home Specialist": {
+      "discount": 0,
+      "default": 0
     },
     "After-School Stroll": {
-      "discount": null
+      "discount": 0,
+      "default": 0
     },
     "Levelheaded": {
       "discount": null
@@ -50,13 +58,15 @@
       "discount": null
     },
     "Corner Recovery": {
-      "discount": 0
+      "discount": 0,
+      "default": 0
     },
     "Highlander": {
       "discount": null
     },
     "Uma Stan": {
-      "discount": null
+      "discount": 0,
+      "default": 0
     },
     "Non-Standard Distance": {
       "discount": null
@@ -81,7 +91,8 @@
       "discount": null
     },
     "Swinging Maestro": {
-      "discount": null
+      "discount": 10,
+      "default": 10
     },
     "Rushing Gale!": {
       "discount": 10,
@@ -167,17 +178,17 @@
       "discount": null
     },
     "End Closer Straightaways": {
-      "discount": 0,
-      "default": 0
+      "discount": null
     },
     "End Closer Straightaways ◎": {
-      "discount": 0
+      "discount": null
     },
     "End Closer Straightaways ○": {
-      "discount": 0
+      "discount": null
     },
     "The Duty of Dignity Calls": {
-      "discount": null
+      "discount": 10,
+      "default": 10
     },
     "Competitive Spirit": {
       "discount": null
@@ -189,23 +200,13 @@
       "discount": null
     },
     "Straightaway Spurt": {
-      "discount": 0,
-      "default": 0
+      "discount": null
     },
     "This Dance Is for Vittoria!": {
       "discount": null
     },
-    "Sleeping Lion": {
-      "discount": 0,
-      "default": 0
-    },
-    "Encroaching Shadow": {
-      "discount": 0,
-      "default": 0
-    },
     "Lone Wolf": {
-      "discount": 0,
-      "default": 0
+      "discount": null
     },
     "Homestretch Haste": {
       "discount": null
@@ -225,10 +226,16 @@
     "Early Start": {
       "discount": null
     },
-    "Masterful Gambit": {
+    "Flashy☆Landing": {
       "discount": null
     },
-    "Moving Past, and Beyond": {
+    "Sunny Days": {
+      "discount": null
+    },
+    "Sunny Days ◎": {
+      "discount": null
+    },
+    "Sunny Days ○": {
       "discount": null
     }
   },
@@ -244,21 +251,16 @@
   },
   "uma": {
     "distanceAptitude": "A",
-    "guts": 624,
-    "power": 1010,
+    "guts": 560,
+    "power": 760,
     "mood": null,
-    "skills": [
-      "Encroaching Shadow",
-      "Sleeping Lion",
-      "Ramp Up",
-      "Professor of Curvature"
-    ],
-    "speed": 1200,
-    "stamina": 700,
+    "skills": [],
+    "speed": 1000,
+    "stamina": 1160,
     "strategy": "End Closer",
     "styleAptitude": "A",
     "surfaceAptitude": "A",
-    "unique": "Nemesis",
-    "wisdom": 833
+    "unique": "Anchors Aweigh!",
+    "wisdom": 460
   }
 }

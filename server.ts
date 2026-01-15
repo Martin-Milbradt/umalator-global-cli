@@ -31,7 +31,8 @@ function loadStaticData(): void {
         cachedSkillmeta = JSON.parse(readFileSync(join(umaToolsDir, "skill_meta.json"), "utf-8"));
         cachedCourseData = JSON.parse(readFileSync(join(umaToolsDir, "course_data.json"), "utf-8"));
     } catch (error) {
-        console.error("Error loading static data:", error);
+        const err = error as Error;
+        throw new Error(`Failed to load static data from ${umaToolsDir}: ${err.message}`);
     }
 }
 loadStaticData();
@@ -323,6 +324,9 @@ app.get("/api/run", (req, res) => {
     }
 
     child.on("close", (code, signal) => {
+        clearTimeout(timeout);
+        clearInterval(keepAlive);
+
         if (stderrOutput) {
             console.error("Stderr content:", stderrOutput);
         }
@@ -374,10 +378,6 @@ app.get("/api/run", (req, res) => {
         }
     }, 5 * 60 * 1000);
 
-    child.on("close", () => {
-        clearTimeout(timeout);
-    });
-
     req.on("close", () => {
         requestClosed = true;
         clearInterval(keepAlive);
@@ -396,10 +396,6 @@ app.get("/api/run", (req, res) => {
             console.log("Killing child process due to request abort");
             child.kill("SIGTERM");
         }
-    });
-
-    child.on("close", () => {
-        clearInterval(keepAlive);
     });
 });
 

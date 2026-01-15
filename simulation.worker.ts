@@ -42,7 +42,7 @@ function runSkillSimulation(task: SimulationTask) {
     // Convert serialized skills object to array of skill IDs
     const baseSkillIds = convertSkillsToArray(task.baseUma.skills);
     const skillIdsWithNewSkill = [...baseSkillIds];
-    const newSkillGroupId = skillmeta[task.skillId].groupId;
+    const newSkillGroupId = skillmeta[task.skillId]?.groupId;
     // Remove any existing skill with the same groupId and add the new one
     const filteredSkillIds = skillIdsWithNewSkill.filter((id) => skillmeta[id]?.groupId !== newSkillGroupId);
     filteredSkillIds.push(task.skillId);

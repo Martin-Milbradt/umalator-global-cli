@@ -102,7 +102,9 @@ function buildVariantCache(): void {
     }
     skillNameToId = Object.fromEntries(Object.entries(skillnames).map(([id, names]) => [names[0], id]));
     buildVariantCache();
-})();
+})().catch((error) => {
+    console.error("Failed to load skillnames:", error);
+});
 
 (async function loadSkillmetaOnInit() {
     const response = await fetch("/api/skillmeta");
@@ -113,7 +115,9 @@ function buildVariantCache(): void {
     if (!skillmeta || typeof skillmeta !== "object") {
         throw new Error("Invalid skillmeta data received");
     }
-})();
+})().catch((error) => {
+    console.error("Failed to load skillmeta:", error);
+});
 
 async function waitForCourseData(): Promise<void> {
     if (courseData) {
@@ -145,7 +149,9 @@ async function waitForCourseData(): Promise<void> {
     if (currentConfig) {
         renderTrack();
     }
-})();
+})().catch((error) => {
+    console.error("Failed to load course data:", error);
+});
 
 function normalizeSkillName(name: string): string {
     return name.toLowerCase().trim().replace(/[◎○×]/g, "").replace(/\s+/g, " ").trim();

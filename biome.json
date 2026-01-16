@@ -35,9 +35,22 @@
       "selfCloseVoidElements": "always"
     }
   },
+  "css": {
+    "parser": {
+      "cssModules": false,
+      "tailwindDirectives": true
+    }
+  },
   "overrides": [
     {
-      "includes": ["*.json", "*.jsonc", "*.yaml", "*.yml", "*.rb", "*.md"],
+      "includes": [
+        "**/*.json",
+        "**/*.jsonc",
+        "**/*.yaml",
+        "**/*.yml",
+        "**/*.rb",
+        "**/*.md"
+      ],
       "formatter": { "indentWidth": 2 }
     }
   ],

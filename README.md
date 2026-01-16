@@ -29,7 +29,7 @@ npm run build:frontend
 npm test
 
 # Run single test file
-npx vitest run fixes.test.ts
+npx vitest run utils.test.ts
 ```
 
 ## Usage

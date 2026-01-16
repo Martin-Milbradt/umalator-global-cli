@@ -59,9 +59,9 @@ npx vitest run utils.test.ts
 
 ### External Dependencies
 
-- Imports from parent directory's `uma-tools` package for simulation logic
-- TypeScript config extends from `../uma-tools/tsconfig.json`
+- Imports from `../uma-tools` package for simulation logic
 - `../uma-tools/uma-skill-tools/` is derived from <https://github.com/alpha123/uma-skill-tools> - understanding this code helps when working on simulation logic, but **never modify it**; pull latest from upstream instead
+- Ignore type checking errors from `../uma-tools` package
 
 ## Key Patterns
 

@@ -6,3 +6,4 @@ public/index.css
 public/style.css
 dist/
 settings.local.json
+tsconfig.tsbuildinfo

@@ -29,7 +29,7 @@ npm run build:frontend
 # Run tests
 npm test
 # Run single test file
-npx vitest run fixes.test.ts
+npx vitest run utils.test.ts
 ```
 
 ## Architecture
@@ -39,6 +39,7 @@ npx vitest run fixes.test.ts
 ### Core Files
 
 - `cli.ts` - CLI entry point using Commander.js, spawns Worker threads for parallel simulations
+- `utils.ts` - Pure utility functions for parsing, formatting, statistics, and skill resolution
 - `server.ts` - Express server (port 3000) serving the web UI and REST API endpoints
 - `simulation.worker.ts` - Worker thread that runs skill simulations using `uma-tools` comparison engine
 - `build.ts` - esbuild configuration for bundling CLI and worker
@@ -73,3 +74,7 @@ npx vitest run fixes.test.ts
 ## Implementation Guidance
 
 When fixing an issue or writing a new feature that doesn't have any tests yet, implement at least one.
+
+### Testing
+
+Tests in `utils.test.ts` cover pure functions from `utils.ts`.

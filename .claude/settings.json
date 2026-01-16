@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(npm run build:*)",
+      "Bash(npm run:*)",
       "Bash(npm run build:frontend:*)",
       "mcp__ide__getDiagnostics",
       "Bash(git checkout:*)",
@@ -13,7 +14,8 @@
       "Bash(gh pr create:*)",
       "Bash(grep:*)",
       "Bash(findstr:*)",
-      "Bash(powershell -Command \"Get-Content skill_data.json | ConvertFrom-Json | ConvertTo-Json -Depth 10 | Select-String ''corner_random'' | Select-Object -First 30\")",
+      "Bash(npm start:*)",
+      "Bash(powershell -Command \"Get-Content:*)",
       "Bash(python3:*)",
       "Bash(node -e:*)",
       "Bash(node cli.js:*)"

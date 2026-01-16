@@ -5,10 +5,11 @@
   "scripts": {
     "build": "tsx build.ts",
     "build:frontend": "vite build",
+    "dev": "concurrently \"tsx server.ts\" \"vite\"",
+    "markdownlint": "markdownlint-cli2 \"**/*.md\"",
     "start": "node cli.js",
     "test": "vitest run",
-    "web": "npm run build:frontend && tsx server.ts",
-    "dev": "concurrently \"tsx server.ts\" \"vite\""
+    "web": "npm run build:frontend && tsx server.ts"
   },
   "dependencies": {
     "commander": "^11.0.0",

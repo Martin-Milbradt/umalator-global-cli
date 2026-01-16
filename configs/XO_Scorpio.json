@@ -234,11 +234,7 @@
     "guts": 500,
     "power": 900,
     "mood": null,
-    "skills": [
-      "Hydrate",
-      "Triple 7s",
-      "Preferred Position"
-    ],
+    "skills": ["Hydrate", "Triple 7s", "Preferred Position"],
     "speed": 1200,
     "stamina": 700,
     "strategy": "Pace Chaser",

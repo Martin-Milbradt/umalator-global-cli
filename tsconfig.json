@@ -1,10 +1,20 @@
 {
-  "extends": "../uma-tools/tsconfig.json",
   "compilerOptions": {
-    "noEmit": true,
+    "lib": ["es2018", "dom"],
+    "target": "es2018",
+    "resolveJsonModule": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "preserveConstEnums": true,
+    "jsx": "react",
+    "jsxFactory": "h",
+    "jsxFragmentFactory": "Fragment",
     "module": "ESNext",
-    "moduleResolution": "node",
+    "noEmit": true,
     "types": ["node"]
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules"]
 }

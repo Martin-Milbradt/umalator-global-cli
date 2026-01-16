@@ -260,10 +260,20 @@ function processCourseData(rawCourse: any): CourseData {
     const laneChangeAcceleration = 0.02 * 1.5;
     const laneChangeAccelerationPerFrame = laneChangeAcceleration / 15.0;
     const maxLaneDistance = (courseWidth * rawCourse.laneMax) / 10000.0;
-    const moveLanePoint = rawCourse.corners.length > 0 ? rawCourse.corners[0].start : 30.0;
+
+    // Workaround for uma-tools bug: corner_random handler crashes on empty corners array
+    // (ActivationConditions.ts:535 accesses course.corners[0] without null check).
+    // Add synthetic zero-length corner at course end for straight courses.
+    // This prevents crashes while correctly preventing corner skill activation.
+    const corners = rawCourse.corners.length > 0
+        ? rawCourse.corners
+        : [{ start: rawCourse.distance, length: 0 }];
+
+    const moveLanePoint = corners[0].start;
 
     return {
         ...rawCourse,
+        corners,
         courseWidth,
         horseLane,
         laneChangeAcceleration,

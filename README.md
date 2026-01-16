@@ -4,6 +4,34 @@ CLI tool for evaluating skills in umalator-global. It calculates mean length gai
 
 Note: The results are different from the browser version, as all optional options are turned on in `simOptions` (unless `deterministic` is set to `true`).
 
+## Commands
+
+```bash
+# Build CLI (required before running)
+npm run build
+
+# Run CLI with default config
+npm start
+
+# Run CLI with specific config
+node cli.js myconfig.json
+
+# Start web server (builds frontend first)
+npm run web
+
+# Development mode (Vite dev server + Express concurrently)
+npm run dev
+
+# Build frontend only
+npm run build:frontend
+
+# Run tests
+npm test
+
+# Run single test file
+npx vitest run fixes.test.ts
+```
+
 ## Usage
 
 ### Web Interface
@@ -42,8 +70,6 @@ The web interface provides:
 ```PowerShell
 # Build the CLI
 npm run build
-# or
-node build.mjs
 
 # Run the CLI (uses default.json)
 npm start

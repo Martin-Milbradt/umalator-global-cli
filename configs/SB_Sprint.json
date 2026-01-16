@@ -1,0 +1,267 @@
+{
+  "deterministic": false,
+  "confidenceInterval": 90,
+  "skills": {
+    "Triumphant Pulse": {
+      "discount": 10,
+      "default": 10
+    },
+    "Shadow Break": {
+      "discount": null
+    },
+    "Behold Thine Emperor's Divine Might": {
+      "discount": null
+    },
+    "Let's Pump Some Iron!": {
+      "discount": null
+    },
+    "Nemesis": {
+      "discount": null
+    },
+    "Professor of Curvature": {
+      "discount": 10,
+      "default": 10
+    },
+    "Corner Adept ○": {
+      "discount": 0,
+      "default": 0
+    },
+    "Passing Pro": {
+      "discount": null
+    },
+    "Highlander": {
+      "discount": null
+    },
+    "Uma Stan": {
+      "discount": null
+    },
+    "Non-Standard Distance": {
+      "discount": null
+    },
+    "Ramp Up": {
+      "discount": null
+    },
+    "Right-Handed": {
+      "discount": null
+    },
+    "Ignited Spirit SPD": {
+      "discount": null
+    },
+    "Swinging Maestro": {
+      "discount": 10,
+      "default": 10
+    },
+    "Rushing Gale!": {
+      "discount": 10,
+      "default": 10
+    },
+    "Straightaway Acceleration": {
+      "discount": 0,
+      "default": 0
+    },
+    "Straightaway Recovery": {
+      "discount": null
+    },
+    "It's On!": {
+      "discount": 10,
+      "default": 10
+    },
+    "No Stopping Me!": {
+      "discount": 10,
+      "default": 10
+    },
+    "Nimble Navigator": {
+      "discount": 0,
+      "default": 0
+    },
+    "Burning Spirit SPD": {
+      "discount": null
+    },
+    "Non-Standard Distance ◎": {
+      "discount": null
+    },
+    "Non-Standard Distance ○": {
+      "discount": null
+    },
+    "Right-Handed ◎": {
+      "discount": null
+    },
+    "Right-Handed ○": {
+      "discount": null
+    },
+    "The Duty of Dignity Calls": {
+      "discount": null
+    },
+    "Lone Wolf": {
+      "discount": null
+    },
+    "Homestretch Haste": {
+      "discount": null
+    },
+    "Inside Scoop": {
+      "discount": null
+    },
+    "Anchors Aweigh!": {
+      "discount": null
+    },
+    "Straightaway Adept": {
+      "discount": null
+    },
+    "Focus": {
+      "discount": null
+    },
+    "Breath of Fresh Air": {
+      "discount": null
+    },
+    "Flashy☆Landing": {
+      "discount": null
+    },
+    "Corner Recovery ○": {
+      "discount": 0,
+      "default": 0
+    },
+    "SPARKLY☆STARDOM": {
+      "discount": null
+    },
+    "Victoria por plancha ☆": {
+      "discount": null
+    },
+    "Standard Distance": {
+      "discount": null
+    },
+    "Standard Distance ◎": {
+      "discount": null
+    },
+    "Standard Distance ○": {
+      "discount": null
+    },
+    "Corner Connoisseur": {
+      "discount": null
+    },
+    "Corner Acceleration ○": {
+      "discount": null
+    },
+    "Acceleration": {
+      "discount": null
+    },
+    "Playtime's Over!": {
+      "discount": null
+    },
+    "Ignited Spirit PWR": {
+      "discount": null
+    },
+    "Front Runner Corners ◎": {
+      "discount": null
+    },
+    "Front Runner Corners ○": {
+      "discount": null
+    },
+    "Front Runner Straightaways ◎": {
+      "discount": null
+    },
+    "Front Runner Straightaways ○": {
+      "discount": null
+    },
+    "Front Runner Savvy ◎": {
+      "discount": 0
+    },
+    "Front Runner Savvy ○": {
+      "discount": 0,
+      "default": 0
+    },
+    "Medium Corners ◎": {
+      "discount": null
+    },
+    "Medium Corners ○": {
+      "discount": null
+    },
+    "Blue Rose Closer": {
+      "discount": 10,
+      "default": 10
+    },
+    "Certain Victory": {
+      "discount": 10,
+      "default": 10
+    },
+    "Tokyo Racecourse": {
+      "discount": null
+    },
+    "Tokyo Racecourse ◎": {
+      "discount": null
+    },
+    "Tokyo Racecourse ○": {
+      "discount": null
+    },
+    "Wet Conditions ○": {
+      "discount": null
+    },
+    "Wet Conditions ◎": {
+      "discount": null
+    },
+    "Lay Low": {
+      "discount": null
+    },
+    "Taking the Lead": {
+      "discount": 10,
+      "default": 10
+    },
+    "Early Lead": {
+      "discount": 0,
+      "default": 0
+    },
+    "Escape Artist": {
+      "discount": 0,
+      "default": 0
+    },
+    "Fast-Paced": {
+      "discount": 0,
+      "default": 0
+    },
+    "Final Push": {
+      "discount": null
+    },
+    "Rosy Outlook": {
+      "discount": null
+    },
+    "Steadfast": {
+      "discount": null
+    },
+    "Leader's Pride": {
+      "discount": null
+    },
+    "Groundwork": {
+      "discount": null
+    },
+    "Tail Held High": {
+      "discount": 0,
+      "default": 0
+    },
+    "Plan X": {
+      "discount": 0
+    }
+  },
+  "track": {
+    "courseId": "",
+    "distance": 1000,
+    "groundCondition": "<Random>",
+    "numUmas": 12,
+    "season": "<Random>",
+    "trackName": "Niigata",
+    "weather": "<Random>",
+    "surface": "Turf"
+  },
+  "uma": {
+    "distanceAptitude": "A",
+    "guts": 408,
+    "power": 771,
+    "mood": null,
+    "skills": [],
+    "speed": 1103,
+    "stamina": 947,
+    "strategy": "Front Runner",
+    "styleAptitude": "A",
+    "surfaceAptitude": "A",
+    "unique": "Angling and Scheming",
+    "wisdom": 658
+  }
+}

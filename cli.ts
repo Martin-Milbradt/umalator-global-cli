@@ -16,6 +16,7 @@ import {
     SkillSet,
 } from '../uma-tools/components/HorseDefTypes'
 import { ThresholdStat } from '../uma-tools/uma-skill-tools/CourseData'
+import type { SkillMeta, RawCourseData } from './types'
 import {
     parseGroundCondition,
     parseWeather,
@@ -107,35 +108,12 @@ async function main() {
     const configPath = `configs/${args[0] || 'default.json'}`
 
     const config = loadJson<Config>(configPath)
-    const skillMeta = loadJson<
-        Record<string, { baseCost: number; groupId?: number; order?: number }>
-    >('../uma-tools/umalator-global/skill_meta.json')
-    const courseData = loadJson<
-        Record<
-            string,
-            {
-                raceTrackId: number
-                surface: number
-                distanceType: number
-                distance: number
-                turn: number
-                courseSetStatus: readonly ThresholdStat[]
-                corners: Array<{ start: number; length: number }>
-                straights: readonly {
-                    start: number
-                    end: number
-                    frontType: number
-                }[]
-                slopes: readonly {
-                    start: number
-                    length: number
-                    slope: number
-                }[]
-                laneMax: number
-                [key: string]: unknown
-            }
-        >
-    >('../uma-tools/umalator-global/course_data.json')
+    const skillMeta = loadJson<Record<string, SkillMeta>>(
+        '../uma-tools/umalator-global/skill_meta.json',
+    )
+    const courseData = loadJson<Record<string, RawCourseData>>(
+        '../uma-tools/umalator-global/course_data.json',
+    )
     const skillNames = loadJson<Record<string, string[]>>(
         '../uma-tools/umalator-global/skillnames.json',
     )

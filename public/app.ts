@@ -1,4 +1,5 @@
 import './input.css'
+import { showToast } from './toast'
 
 interface Skill {
     discount: number | null
@@ -122,8 +123,8 @@ function buildVariantCache(): void {
     )
     buildVariantCache()
     buildSkillNameLookup()
-})().catch((error) => {
-    console.error('Failed to load skillnames:', error)
+})().catch(() => {
+    showToast({ type: 'error', message: 'Failed to load skill names' })
 })
 
 ;(async function loadSkillmetaOnInit() {
@@ -137,8 +138,8 @@ function buildVariantCache(): void {
     if (!skillmeta || typeof skillmeta !== 'object') {
         throw new Error('Invalid skillmeta data received')
     }
-})().catch((error) => {
-    console.error('Failed to load skillmeta:', error)
+})().catch(() => {
+    showToast({ type: 'error', message: 'Failed to load skill metadata' })
 })
 
 async function waitForCourseData(): Promise<void> {
@@ -173,8 +174,8 @@ async function waitForCourseData(): Promise<void> {
     if (currentConfig) {
         renderTrack()
     }
-})().catch((error) => {
-    console.error('Failed to load course data:', error)
+})().catch(() => {
+    showToast({ type: 'error', message: 'Failed to load course data' })
 })
 
 function normalizeSkillName(name: string): string {
@@ -1215,8 +1216,8 @@ async function saveConfig(): Promise<void> {
             },
             body: JSON.stringify(currentConfig),
         })
-    } catch (error) {
-        console.error('Error saving config:', error)
+    } catch {
+        showToast({ type: 'error', message: 'Failed to save config' })
     }
 }
 
@@ -1318,13 +1319,13 @@ async function runCalculations(): Promise<void> {
                         } else if (data.type === 'error') {
                             button.disabled = false
                             output.textContent += `\n\nError: ${data.error || 'Unknown error'}`
+                            showToast({
+                                type: 'error',
+                                message: data.error || 'Simulation error',
+                            })
                         }
-                    } catch (parseError) {
-                        console.error(
-                            'Error parsing SSE data:',
-                            parseError,
-                            line,
-                        )
+                    } catch {
+                        // Ignore SSE parse errors (typically incomplete chunks)
                     }
                 }
             }

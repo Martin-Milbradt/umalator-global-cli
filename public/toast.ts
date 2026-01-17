@@ -32,6 +32,7 @@ function getOrCreateContainer(): HTMLDivElement {
     toastContainer = document.createElement('div')
     toastContainer.id = 'toast-container'
     toastContainer.className = 'fixed bottom-4 right-4 z-50 flex flex-col gap-2'
+    toastContainer.setAttribute('aria-live', 'polite')
     document.body.appendChild(toastContainer)
     return toastContainer
 }
@@ -56,7 +57,10 @@ export function showToast(options: ToastOptions): void {
     closeButton.setAttribute('aria-label', 'Close')
     toast.appendChild(closeButton)
 
+    let dismissed = false
     const removeToast = () => {
+        if (dismissed) return
+        dismissed = true
         toast.classList.add('opacity-0', 'translate-x-4')
         setTimeout(() => {
             toast.remove()

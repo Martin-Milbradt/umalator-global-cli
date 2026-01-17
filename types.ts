@@ -96,7 +96,7 @@ export interface WorkerMessage {
  */
 export interface SkillMeta {
     baseCost: number
-    groupId?: number
+    groupId?: string
     order?: number
     iconId?: string
 }
@@ -110,6 +110,9 @@ export interface RawCourseData {
     distanceType: number
     distance: number
     turn: number
+    course: number
+    finishTimeMax: number
+    finishTimeMin: number
     courseSetStatus: readonly import('../uma-tools/uma-skill-tools/CourseData').ThresholdStat[]
     corners: Array<{ start: number; length: number }>
     straights: readonly { start: number; end: number; frontType: number }[]

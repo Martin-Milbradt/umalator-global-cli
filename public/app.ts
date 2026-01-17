@@ -73,6 +73,20 @@ let courseData: CourseData | null = null
 // Cache for variant lookups (built once after skillnames loads)
 let variantCache: Map<string, string[]> | null = null
 
+// Case-insensitive skill name lookup map (built once after skillnames loads)
+let skillNameLookup: Map<string, string> | null = null
+
+function buildSkillNameLookup(): void {
+    if (!skillnames) return
+    skillNameLookup = new Map()
+    for (const [, names] of Object.entries(skillnames)) {
+        if (Array.isArray(names) && names[0]) {
+            const canonicalName = names[0]
+            skillNameLookup.set(canonicalName.toLowerCase(), canonicalName)
+        }
+    }
+}
+
 function buildVariantCache(): void {
     if (!skillnames) return
     variantCache = new Map()
@@ -106,6 +120,7 @@ function buildVariantCache(): void {
         Object.entries(skillnames).map(([id, names]) => [names[0], id]),
     )
     buildVariantCache()
+    buildSkillNameLookup()
 })().catch((error) => {
     console.error('Failed to load skillnames:', error)
 })
@@ -171,16 +186,9 @@ function normalizeSkillName(name: string): string {
 }
 
 function getCanonicalSkillName(inputName: string): string {
-    if (!skillnames) return inputName
-    const normalizedInput = inputName.toLowerCase().trim()
-    for (const [, names] of Object.entries(skillnames)) {
-        if (Array.isArray(names) && names[0]) {
-            if (names[0].toLowerCase() === normalizedInput) {
-                return names[0]
-            }
-        }
-    }
-    return inputName
+    if (!skillNameLookup) return inputName
+    const canonical = skillNameLookup.get(inputName.toLowerCase().trim())
+    return canonical || inputName
 }
 
 function getBaseSkillName(skillName: string): string {

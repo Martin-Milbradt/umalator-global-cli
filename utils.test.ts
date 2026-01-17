@@ -33,6 +33,9 @@ import {
     calculateStatsFromRawResults,
     calculateSkillCost,
     formatTable,
+    buildSkillNameLookup,
+    getCanonicalSkillName,
+    normalizeConfigSkillNames,
     type SkillResult,
 } from './utils'
 
@@ -793,5 +796,207 @@ describe('formatTable', () => {
         expect(lines[0]).toContain('Skill')
         expect(lines[2]).toContain('Skill A')
         expect(lines[3]).toContain('Longer Skill Name')
+    })
+})
+
+describe('buildSkillNameLookup', () => {
+    it('builds lookup map from skill names', () => {
+        const skillNames: Record<string, string[]> = {
+            skill001: ['Speed Boost', 'スピードブースト'],
+            skill002: ['Power Up', 'パワーアップ'],
+        }
+        const lookup = buildSkillNameLookup(skillNames)
+        expect(lookup.get('speed boost')).toBe('Speed Boost')
+        expect(lookup.get('power up')).toBe('Power Up')
+    })
+
+    it('maps lowercase to canonical casing', () => {
+        const skillNames: Record<string, string[]> = {
+            skill001: ['Victoria por Plancha ☆', 'プランチャデビクトリア☆'],
+        }
+        const lookup = buildSkillNameLookup(skillNames)
+        expect(lookup.get('victoria por plancha ☆')).toBe(
+            'Victoria por Plancha ☆',
+        )
+    })
+
+    it('handles empty skill names object', () => {
+        const lookup = buildSkillNameLookup({})
+        expect(lookup.size).toBe(0)
+    })
+
+    it('handles skill with empty names array', () => {
+        const skillNames: Record<string, string[]> = {
+            skill001: [],
+            skill002: ['Valid Skill'],
+        }
+        const lookup = buildSkillNameLookup(skillNames)
+        expect(lookup.size).toBe(1)
+        expect(lookup.get('valid skill')).toBe('Valid Skill')
+    })
+
+    it('handles Japanese skill names', () => {
+        const skillNames: Record<string, string[]> = {
+            skill001: ['右回り○', 'Right-Handed ○'],
+        }
+        const lookup = buildSkillNameLookup(skillNames)
+        expect(lookup.get('右回り○')).toBe('右回り○')
+    })
+})
+
+describe('getCanonicalSkillName', () => {
+    const skillNames: Record<string, string[]> = {
+        skill001: ['Speed Boost', 'スピードブースト'],
+        skill002: ['Power Up', 'パワーアップ'],
+        skill003: ['Victoria por Plancha ☆', 'プランチャデビクトリア☆'],
+    }
+    const lookup = buildSkillNameLookup(skillNames)
+
+    it('returns canonical name for lowercase input', () => {
+        expect(getCanonicalSkillName('speed boost', lookup)).toBe('Speed Boost')
+    })
+
+    it('returns canonical name for uppercase input', () => {
+        expect(getCanonicalSkillName('POWER UP', lookup)).toBe('Power Up')
+    })
+
+    it('returns canonical name for mixed case input', () => {
+        expect(getCanonicalSkillName('SpEeD bOoSt', lookup)).toBe('Speed Boost')
+    })
+
+    it('preserves special characters in canonical name', () => {
+        expect(getCanonicalSkillName('victoria por plancha ☆', lookup)).toBe(
+            'Victoria por Plancha ☆',
+        )
+    })
+
+    it('returns original input when not found in lookup', () => {
+        expect(getCanonicalSkillName('Unknown Skill', lookup)).toBe(
+            'Unknown Skill',
+        )
+    })
+
+    it('returns original input for empty lookup', () => {
+        const emptyLookup = new Map<string, string>()
+        expect(getCanonicalSkillName('Speed Boost', emptyLookup)).toBe(
+            'Speed Boost',
+        )
+    })
+})
+
+describe('normalizeConfigSkillNames', () => {
+    const skillNames: Record<string, string[]> = {
+        skill001: ['Speed Boost', 'スピードブースト'],
+        skill002: ['Power Up', 'パワーアップ'],
+        skill003: ['Unique Ability', 'ユニークアビリティ'],
+    }
+    const lookup = buildSkillNameLookup(skillNames)
+
+    it('normalizes skills object keys to canonical casing', () => {
+        const config = {
+            skills: {
+                'speed boost': { discount: 10 },
+                'POWER UP': { discount: 20 },
+            },
+        }
+        const result = normalizeConfigSkillNames(config, lookup)
+        expect(result.skills).toHaveProperty('Speed Boost')
+        expect(result.skills).toHaveProperty('Power Up')
+        expect(result.skills?.['Speed Boost']?.discount).toBe(10)
+        expect(result.skills?.['Power Up']?.discount).toBe(20)
+    })
+
+    it('normalizes uma.skills array', () => {
+        const config = {
+            skills: {},
+            uma: {
+                skills: ['speed boost', 'POWER UP'],
+            },
+        }
+        const result = normalizeConfigSkillNames(config, lookup)
+        expect(result.uma?.skills).toEqual(['Speed Boost', 'Power Up'])
+    })
+
+    it('normalizes uma.unique', () => {
+        const config = {
+            skills: {},
+            uma: {
+                unique: 'unique ability',
+            },
+        }
+        const result = normalizeConfigSkillNames(config, lookup)
+        expect(result.uma?.unique).toBe('Unique Ability')
+    })
+
+    it('preserves skill data during normalization', () => {
+        const config = {
+            skills: {
+                'speed boost': { discount: 15, default: 10 },
+            },
+        }
+        const result = normalizeConfigSkillNames(config, lookup)
+        expect(result.skills?.['Speed Boost']).toEqual({
+            discount: 15,
+            default: 10,
+        })
+    })
+
+    it('returns config unchanged with empty lookup', () => {
+        const config = {
+            skills: {
+                'speed boost': { discount: 10 },
+            },
+        }
+        const emptyLookup = new Map<string, string>()
+        const result = normalizeConfigSkillNames(config, emptyLookup)
+        expect(result.skills).toHaveProperty('speed boost')
+    })
+
+    it('preserves unknown skill names', () => {
+        const config = {
+            skills: {
+                'Unknown Skill': { discount: 5 },
+                'speed boost': { discount: 10 },
+            },
+        }
+        const result = normalizeConfigSkillNames(config, lookup)
+        expect(result.skills).toHaveProperty('Unknown Skill')
+        expect(result.skills).toHaveProperty('Speed Boost')
+    })
+
+    it('handles config without skills property', () => {
+        const config = {
+            uma: {
+                skills: ['speed boost'],
+            },
+        }
+        const result = normalizeConfigSkillNames(config, lookup)
+        expect(result.uma?.skills).toEqual(['Speed Boost'])
+    })
+
+    it('handles config without uma property', () => {
+        const config = {
+            skills: {
+                'speed boost': { discount: 10 },
+            },
+        }
+        const result = normalizeConfigSkillNames(config, lookup)
+        expect(result.skills).toHaveProperty('Speed Boost')
+        expect(result.uma).toBeUndefined()
+    })
+
+    it('preserves other uma properties', () => {
+        const config = {
+            skills: {},
+            uma: {
+                skills: ['speed boost'],
+                unique: 'unique ability',
+                speed: 1200,
+                stamina: 800,
+            },
+        }
+        const result = normalizeConfigSkillNames(config, lookup)
+        expect(result.uma?.speed).toBe(1200)
+        expect(result.uma?.stamina).toBe(800)
     })
 })

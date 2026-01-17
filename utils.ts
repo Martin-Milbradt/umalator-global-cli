@@ -586,6 +586,70 @@ export function formatTrackDetails(
     return `${trackName}, ${course.distance}m (${distanceType}), ${surface}, ${turn}, ${seasonFormatted}, ${ground}, ${weatherFormatted}${numUmasPart}${courseIdPart}`
 }
 
+export function buildSkillNameLookup(
+    skillNames: Record<string, string[]>,
+): Map<string, string> {
+    const lookup = new Map<string, string>()
+    for (const [, names] of Object.entries(skillNames)) {
+        if (Array.isArray(names) && names[0]) {
+            const canonicalName = names[0]
+            lookup.set(canonicalName.toLowerCase(), canonicalName)
+        }
+    }
+    return lookup
+}
+
+export function getCanonicalSkillName(
+    inputName: string,
+    skillNameLookup: Map<string, string>,
+): string {
+    const canonical = skillNameLookup.get(inputName.toLowerCase())
+    return canonical || inputName
+}
+
+interface ConfigSkill {
+    discount?: number | null
+    default?: number | null
+}
+
+interface ConfigBody {
+    skills?: Record<string, ConfigSkill>
+    uma?: {
+        skills?: string[]
+        unique?: string
+        [key: string]: unknown
+    }
+    [key: string]: unknown
+}
+
+export function normalizeConfigSkillNames(
+    config: ConfigBody,
+    skillNameLookup: Map<string, string>,
+): ConfigBody {
+    if (skillNameLookup.size === 0) return config
+
+    if (config.skills && typeof config.skills === 'object') {
+        const normalizedSkills: Record<string, ConfigSkill> = {}
+        for (const [skillName, skillData] of Object.entries(config.skills)) {
+            const canonicalName = getCanonicalSkillName(skillName, skillNameLookup)
+            normalizedSkills[canonicalName] = skillData
+        }
+        config.skills = normalizedSkills
+    }
+
+    if (config.uma?.skills && Array.isArray(config.uma.skills)) {
+        config.uma.skills = config.uma.skills.map((skillName) =>
+            getCanonicalSkillName(skillName, skillNameLookup),
+        )
+    }
+
+    if (config.uma?.unique && typeof config.uma.unique === 'string') {
+        config.uma.unique = getCanonicalSkillName(config.uma.unique, skillNameLookup)
+    }
+
+    return config
+}
+
 export function formatTable(
     results: SkillResult[],
     confidenceInterval: number,

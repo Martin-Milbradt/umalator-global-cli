@@ -9,6 +9,10 @@ import {
 import { resolve, join, dirname } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import {
+    buildSkillNameLookup,
+    normalizeConfigSkillNames,
+} from './utils'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -33,23 +37,6 @@ let cachedCourseData: Record<string, unknown> | null = null
 // Case-insensitive skill name lookup map (built once after skillnames loads)
 let skillNameLookup: Map<string, string> | null = null
 
-function buildSkillNameLookup(): void {
-    if (!cachedSkillnames) return
-    skillNameLookup = new Map()
-    for (const [, names] of Object.entries(cachedSkillnames)) {
-        if (Array.isArray(names) && names[0]) {
-            const canonicalName = names[0]
-            skillNameLookup.set(canonicalName.toLowerCase(), canonicalName)
-        }
-    }
-}
-
-function getCanonicalSkillName(inputName: string): string {
-    if (!skillNameLookup) return inputName
-    const canonical = skillNameLookup.get(inputName.toLowerCase())
-    return canonical || inputName
-}
-
 function loadStaticData(): void {
     try {
         cachedSkillnames = JSON.parse(
@@ -61,7 +48,7 @@ function loadStaticData(): void {
         cachedCourseData = JSON.parse(
             readFileSync(join(umaToolsDir, 'course_data.json'), 'utf-8'),
         )
-        buildSkillNameLookup()
+        skillNameLookup = buildSkillNameLookup(cachedSkillnames)
     } catch (error) {
         const err = error as Error
         throw new Error(
@@ -135,55 +122,13 @@ app.get('/api/config/:filename', (req, res) => {
     }
 })
 
-interface ConfigSkill {
-    discount?: number | null
-    default?: number | null
-}
-
-interface ConfigBody {
-    skills?: Record<string, ConfigSkill>
-    uma?: {
-        skills?: string[]
-        unique?: string
-        [key: string]: unknown
-    }
-    [key: string]: unknown
-}
-
-function normalizeConfigSkillNames(config: ConfigBody): ConfigBody {
-    if (!skillNameLookup) return config
-
-    // Normalize skills object keys
-    if (config.skills && typeof config.skills === 'object') {
-        const normalizedSkills: Record<string, ConfigSkill> = {}
-        for (const [skillName, skillData] of Object.entries(config.skills)) {
-            const canonicalName = getCanonicalSkillName(skillName)
-            normalizedSkills[canonicalName] = skillData
-        }
-        config.skills = normalizedSkills
-    }
-
-    // Normalize uma.skills array
-    if (config.uma?.skills && Array.isArray(config.uma.skills)) {
-        config.uma.skills = config.uma.skills.map((skillName) =>
-            getCanonicalSkillName(skillName),
-        )
-    }
-
-    // Normalize uma.unique
-    if (config.uma?.unique && typeof config.uma.unique === 'string') {
-        config.uma.unique = getCanonicalSkillName(config.uma.unique)
-    }
-
-    return config
-}
-
 app.post('/api/config/:filename', (req, res) => {
     try {
         const filename = req.params.filename
         const filePath = join(configDir, filename)
         const normalizedConfig = normalizeConfigSkillNames(
-            req.body as ConfigBody,
+            req.body,
+            skillNameLookup || new Map(),
         )
         writeFileSync(
             filePath,

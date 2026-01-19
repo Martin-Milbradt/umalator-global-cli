@@ -88,17 +88,19 @@ interface CurrentSettings {
 
 // Mapping constants for skill trigger checking
 // NOTE: Keep in sync with utils.ts STRATEGY_TO_RUNNING_STYLE
+// Running style values verified from skill_data.json:
+// 1=Front Runner (Nige), 2=Pace Chaser (Senkou), 3=Late Surger (Sasi), 4=End Closer (Oikomi), 5=Runaway (Oonige)
 const STRATEGY_TO_RUNNING_STYLE: Record<string, number> = {
-    'End Closer': 5,
-    'Front Runner': 2,
-    'Late Surger': 4,
-    Nige: 2,
-    Oonige: 1,
-    Oikomi: 5,
-    'Pace Chaser': 3,
-    Runaway: 1,
-    Sasi: 4,
-    Senkou: 3,
+    'End Closer': 4,
+    'Front Runner': 1,
+    'Late Surger': 3,
+    Nige: 1,
+    Oikomi: 4,
+    Oonige: 5,
+    'Pace Chaser': 2,
+    Runaway: 5,
+    Sasi: 3,
+    Senkou: 2,
 }
 
 const TRACK_NAME_TO_ID: Record<string, number> = {
@@ -483,11 +485,18 @@ function canSkillTrigger(
     }
 
     // Running style
+    // Special case: Runaway (5) can use Front Runner (1) skills because there are no Runaway-specific skills
     if (restrictions.runningStyles) {
         if (restrictions.runningStyles.length === 0) {
             return false // Impossible condition from intersection
         }
-        if (!restrictions.runningStyles.includes(settings.runningStyle)) {
+        const effectiveRunningStyle = settings.runningStyle
+        let matches = restrictions.runningStyles.includes(effectiveRunningStyle)
+        // Runaway (5) can trigger Front Runner (1) skills
+        if (!matches && effectiveRunningStyle === 5 && restrictions.runningStyles.includes(1)) {
+            matches = true
+        }
+        if (!matches) {
             return false
         }
     }

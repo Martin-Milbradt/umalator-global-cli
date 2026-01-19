@@ -1030,20 +1030,20 @@ describe('getDistanceType', () => {
 })
 
 describe('STRATEGY_TO_RUNNING_STYLE', () => {
-    it('maps Japanese strategy names to running style numbers', () => {
-        expect(STRATEGY_TO_RUNNING_STYLE['Oonige']).toBe(1)
-        expect(STRATEGY_TO_RUNNING_STYLE['Nige']).toBe(2)
-        expect(STRATEGY_TO_RUNNING_STYLE['Senkou']).toBe(3)
-        expect(STRATEGY_TO_RUNNING_STYLE['Sasi']).toBe(4)
-        expect(STRATEGY_TO_RUNNING_STYLE['Oikomi']).toBe(5)
+    it('maps Japanese strategy names', () => {
+        expect(STRATEGY_TO_RUNNING_STYLE['Nige']).toBe(1)      // Front Runner
+        expect(STRATEGY_TO_RUNNING_STYLE['Senkou']).toBe(2)    // Pace Chaser
+        expect(STRATEGY_TO_RUNNING_STYLE['Sasi']).toBe(3)      // Late Surger
+        expect(STRATEGY_TO_RUNNING_STYLE['Oikomi']).toBe(4)    // End Closer
+        expect(STRATEGY_TO_RUNNING_STYLE['Oonige']).toBe(5)    // Runaway
     })
 
-    it('maps English strategy names to running style numbers', () => {
-        expect(STRATEGY_TO_RUNNING_STYLE['Runaway']).toBe(1)
-        expect(STRATEGY_TO_RUNNING_STYLE['Front Runner']).toBe(2)
-        expect(STRATEGY_TO_RUNNING_STYLE['Pace Chaser']).toBe(3)
-        expect(STRATEGY_TO_RUNNING_STYLE['Late Surger']).toBe(4)
-        expect(STRATEGY_TO_RUNNING_STYLE['End Closer']).toBe(5)
+    it('maps English strategy names', () => {
+        expect(STRATEGY_TO_RUNNING_STYLE['Front Runner']).toBe(1)
+        expect(STRATEGY_TO_RUNNING_STYLE['Pace Chaser']).toBe(2)
+        expect(STRATEGY_TO_RUNNING_STYLE['Late Surger']).toBe(3)
+        expect(STRATEGY_TO_RUNNING_STYLE['End Closer']).toBe(4)
+        expect(STRATEGY_TO_RUNNING_STYLE['Runaway']).toBe(5)
     })
 })
 
@@ -1570,67 +1570,92 @@ describe('canSkillTrigger with empty restriction arrays', () => {
     })
 })
 
-describe('skill filtering with English strategy names', () => {
-    // Regression tests to ensure English strategy names work correctly
-    // with skill filtering (previously only Japanese names were supported)
+describe('skill filtering by strategy', () => {
+    // Use canonical "<Strategy> Straightaways ○" skills which have running_style==N conditions
 
-    it('Front Runner skills should trigger for Front Runner strategy', () => {
-        // Preferred Position has running_style==2 (Front Runner/Nige)
-        const restrictions = extractStaticRestrictions('running_style==2&phase_random==1&order_rate<=50')
-        expect(restrictions.runningStyles).toEqual([2])
-
-        const runningStyle = STRATEGY_TO_RUNNING_STYLE['Front Runner']
-        expect(runningStyle).toBe(2)
-
+    it('Front Runner Straightaways ○ triggers for Front Runner', () => {
+        // running_style==1
+        const restrictions = extractStaticRestrictions('running_style==1&straight_random==1')
         const settings: CurrentSettings = {
             distanceType: null,
-            runningStyle: runningStyle ?? 3,
-            groundType: null,
-            groundCondition: null,
-            weather: null,
-            season: null,
-            trackId: null,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE['Front Runner'], // 1
+            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
         }
         expect(canSkillTrigger(restrictions, settings)).toBe(true)
     })
 
-    it('Pace Chaser skills should NOT trigger for Front Runner strategy', () => {
-        // Fast & Furious has running_style==3 (Pace Chaser/Senkou)
-        const restrictions = extractStaticRestrictions('running_style==3&phase_random==1&order_rate>50')
-        expect(restrictions.runningStyles).toEqual([3])
-
-        const runningStyle = STRATEGY_TO_RUNNING_STYLE['Front Runner']
-        expect(runningStyle).toBe(2)
-
+    it('Front Runner Straightaways ○ does NOT trigger for Pace Chaser', () => {
+        const restrictions = extractStaticRestrictions('running_style==1&straight_random==1')
         const settings: CurrentSettings = {
             distanceType: null,
-            runningStyle: runningStyle ?? 3,
-            groundType: null,
-            groundCondition: null,
-            weather: null,
-            season: null,
-            trackId: null,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE['Pace Chaser'], // 2
+            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
         }
         expect(canSkillTrigger(restrictions, settings)).toBe(false)
     })
 
-    it('Runaway skills should trigger for Runaway strategy', () => {
-        // Early Lead has running_style==1 (Runaway/Oonige)
-        const restrictions = extractStaticRestrictions('running_style==1&phase==0&order==0')
-        expect(restrictions.runningStyles).toEqual([1])
-
-        const runningStyle = STRATEGY_TO_RUNNING_STYLE['Runaway']
-        expect(runningStyle).toBe(1)
-
+    it('Pace Chaser Straightaways ○ triggers for Pace Chaser', () => {
+        // running_style==2
+        const restrictions = extractStaticRestrictions('running_style==2&straight_random==1')
         const settings: CurrentSettings = {
             distanceType: null,
-            runningStyle: runningStyle ?? 3,
-            groundType: null,
-            groundCondition: null,
-            weather: null,
-            season: null,
-            trackId: null,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE['Pace Chaser'], // 2
+            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
         }
         expect(canSkillTrigger(restrictions, settings)).toBe(true)
+    })
+
+    it('Pace Chaser Straightaways ○ does NOT trigger for Front Runner', () => {
+        const restrictions = extractStaticRestrictions('running_style==2&straight_random==1')
+        const settings: CurrentSettings = {
+            distanceType: null,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE['Front Runner'], // 1
+            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+        }
+        expect(canSkillTrigger(restrictions, settings)).toBe(false)
+    })
+
+    it('Late Surger Straightaways ○ triggers for Late Surger', () => {
+        // running_style==3
+        const restrictions = extractStaticRestrictions('running_style==3&straight_random==1')
+        const settings: CurrentSettings = {
+            distanceType: null,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE['Late Surger'], // 3
+            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+        }
+        expect(canSkillTrigger(restrictions, settings)).toBe(true)
+    })
+
+    it('End Closer Straightaways ○ triggers for End Closer', () => {
+        // running_style==4
+        const restrictions = extractStaticRestrictions('running_style==4&straight_random==1')
+        const settings: CurrentSettings = {
+            distanceType: null,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE['End Closer'], // 4
+            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+        }
+        expect(canSkillTrigger(restrictions, settings)).toBe(true)
+    })
+
+    // Special case: Runaway uses Front Runner skills
+    it('Front Runner Straightaways ○ triggers for Runaway (special case)', () => {
+        // Runaway (5) should match running_style==1 skills because there are no Runaway-specific skills
+        const restrictions = extractStaticRestrictions('running_style==1&straight_random==1')
+        const settings: CurrentSettings = {
+            distanceType: null,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE['Runaway'], // 5
+            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+        }
+        expect(canSkillTrigger(restrictions, settings)).toBe(true)
+    })
+
+    it('Pace Chaser Straightaways ○ does NOT trigger for Runaway', () => {
+        const restrictions = extractStaticRestrictions('running_style==2&straight_random==1')
+        const settings: CurrentSettings = {
+            distanceType: null,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE['Runaway'], // 5
+            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+        }
+        expect(canSkillTrigger(restrictions, settings)).toBe(false)
     })
 })

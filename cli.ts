@@ -36,6 +36,7 @@ import {
     findSkillVariantsByName,
     processCourseData,
     calculateSkillCost,
+    type SkillCostContext,
     findMatchingCoursesWithFilters,
     formatTrackDetails,
     formatTable,
@@ -657,20 +658,20 @@ async function main() {
 
     const skillRawResultsMap: Map<string, SkillRawResults> = new Map()
 
+    const skillCostContext: SkillCostContext = {
+        skillMeta,
+        baseUmaSkillIds: umaSkillIds,
+        skillNames,
+        configSkills,
+        skillIdToName,
+        skillNameToConfigKey,
+    }
+
     for (const skillName of availableSkillNames) {
         const skillId = skillNameToId[skillName]
         const configKey = skillNameToConfigKey[skillName] || skillName
         const skillConfig = configSkills[configKey]
-        const cost = calculateSkillCost(
-            skillId,
-            skillMeta,
-            skillConfig,
-            umaSkillIds,
-            skillNames,
-            configSkills,
-            skillIdToName,
-            skillNameToConfigKey,
-        )
+        const cost = calculateSkillCost(skillId, skillConfig, skillCostContext)
         skillRawResultsMap.set(skillName, {
             skillName,
             rawResults: [],

@@ -682,39 +682,30 @@ describe('calculateSkillCost', () => {
         skill002: { baseCost: 150, groupId: 1, order: 1 },
         skill003: { baseCost: 100, groupId: 1, order: 2 },
     }
+    const context = { skillMeta }
 
     it('calculates base cost without discount', () => {
-        const result = calculateSkillCost('skill001', skillMeta, {
-            discount: 0,
-        })
+        const result = calculateSkillCost('skill001', { discount: 0 }, context)
         expect(result).toBe(200)
     })
 
     it('applies discount correctly', () => {
-        const result = calculateSkillCost('skill001', skillMeta, {
-            discount: 10,
-        })
+        const result = calculateSkillCost('skill001', { discount: 10 }, context)
         expect(result).toBe(180)
     })
 
     it('rounds up after discount', () => {
-        const result = calculateSkillCost('skill001', skillMeta, {
-            discount: 15,
-        })
+        const result = calculateSkillCost('skill001', { discount: 15 }, context)
         expect(result).toBe(170)
     })
 
     it('uses default cost of 200 for unknown skill', () => {
-        const result = calculateSkillCost('unknown', skillMeta, {
-            discount: 0,
-        })
+        const result = calculateSkillCost('unknown', { discount: 0 }, context)
         expect(result).toBe(200)
     })
 
     it('handles null discount as 0', () => {
-        const result = calculateSkillCost('skill001', skillMeta, {
-            discount: null,
-        })
+        const result = calculateSkillCost('skill001', { discount: null }, context)
         expect(result).toBe(200)
     })
 })

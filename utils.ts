@@ -401,19 +401,24 @@ export function calculateStatsFromRawResults(
     }
 }
 
-export function calculateSkillCost(
-    skillId: string,
+export interface SkillCostContext {
     skillMeta: Record<
         string,
         { baseCost: number; groupId?: number; order?: number }
-    >,
+    >
+    baseUmaSkillIds?: string[]
+    skillNames?: Record<string, string[]>
+    configSkills?: Record<string, { discount?: number | null }>
+    skillIdToName?: Record<string, string>
+    skillNameToConfigKey?: Record<string, string>
+}
+
+export function calculateSkillCost(
+    skillId: string,
     skillConfig: { discount?: number | null },
-    baseUmaSkillIds?: string[],
-    skillNames?: Record<string, string[]>,
-    allConfigSkills?: Record<string, { discount?: number | null }>,
-    skillIdToName?: Record<string, string>,
-    skillNameToConfigKey?: Record<string, string>,
+    context: SkillCostContext,
 ): number {
+    const { skillMeta, baseUmaSkillIds, skillNames, configSkills, skillIdToName, skillNameToConfigKey } = context
     const currentSkill = skillMeta[skillId]
     const baseCost = currentSkill?.baseCost ?? 200
     const discount = skillConfig.discount ?? 0
@@ -455,13 +460,13 @@ export function calculateSkillCost(
                 }
 
                 let otherDiscount = 0
-                if (allConfigSkills && skillIdToName && skillNameToConfigKey) {
+                if (configSkills && skillIdToName && skillNameToConfigKey) {
                     const skillName = skillIdToName[otherSkillId]
                     if (skillName) {
                         const configKey =
                             skillNameToConfigKey[skillName] || skillName
                         otherDiscount =
-                            allConfigSkills[configKey]?.discount ?? 0
+                            configSkills[configKey]?.discount ?? 0
                     }
                 }
 

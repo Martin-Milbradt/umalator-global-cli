@@ -83,6 +83,7 @@ app.get('/api/configs', (_req, res) => {
         res.json(
             configs
                 .map((c) => c.name)
+                .filter((name) => name.endsWith('.json'))
                 .filter((name) => name !== 'config.example.json'),
         )
     } catch (error) {

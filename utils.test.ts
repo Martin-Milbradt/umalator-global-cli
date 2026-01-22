@@ -742,7 +742,11 @@ describe('calculateSkillCost', () => {
     })
 
     it('handles null discount as 0', () => {
-        const result = calculateSkillCost('skill001', { discount: null }, context)
+        const result = calculateSkillCost(
+            'skill001',
+            { discount: null },
+            context,
+        )
         expect(result).toBe(200)
     })
 })
@@ -1059,11 +1063,11 @@ describe('getDistanceType', () => {
 
 describe('STRATEGY_TO_RUNNING_STYLE', () => {
     it('maps Japanese strategy names', () => {
-        expect(STRATEGY_TO_RUNNING_STYLE['Nige']).toBe(1)      // Front Runner
-        expect(STRATEGY_TO_RUNNING_STYLE['Senkou']).toBe(2)    // Pace Chaser
-        expect(STRATEGY_TO_RUNNING_STYLE['Sasi']).toBe(3)      // Late Surger
-        expect(STRATEGY_TO_RUNNING_STYLE['Oikomi']).toBe(4)    // End Closer
-        expect(STRATEGY_TO_RUNNING_STYLE['Oonige']).toBe(5)    // Runaway
+        expect(STRATEGY_TO_RUNNING_STYLE.Nige).toBe(1) // Front Runner
+        expect(STRATEGY_TO_RUNNING_STYLE.Senkou).toBe(2) // Pace Chaser
+        expect(STRATEGY_TO_RUNNING_STYLE.Sasi).toBe(3) // Late Surger
+        expect(STRATEGY_TO_RUNNING_STYLE.Oikomi).toBe(4) // End Closer
+        expect(STRATEGY_TO_RUNNING_STYLE.Oonige).toBe(5) // Runaway
     })
 
     it('maps English strategy names', () => {
@@ -1071,17 +1075,17 @@ describe('STRATEGY_TO_RUNNING_STYLE', () => {
         expect(STRATEGY_TO_RUNNING_STYLE['Pace Chaser']).toBe(2)
         expect(STRATEGY_TO_RUNNING_STYLE['Late Surger']).toBe(3)
         expect(STRATEGY_TO_RUNNING_STYLE['End Closer']).toBe(4)
-        expect(STRATEGY_TO_RUNNING_STYLE['Runaway']).toBe(5)
+        expect(STRATEGY_TO_RUNNING_STYLE.Runaway).toBe(5)
     })
 })
 
 describe('TRACK_NAME_TO_ID', () => {
     it('maps track names to IDs', () => {
-        expect(TRACK_NAME_TO_ID['Tokyo']).toBe(10006)
-        expect(TRACK_NAME_TO_ID['Nakayama']).toBe(10005)
-        expect(TRACK_NAME_TO_ID['Kyoto']).toBe(10008)
-        expect(TRACK_NAME_TO_ID['Hanshin']).toBe(10009)
-        expect(TRACK_NAME_TO_ID['Ooi']).toBe(10101)
+        expect(TRACK_NAME_TO_ID.Tokyo).toBe(10006)
+        expect(TRACK_NAME_TO_ID.Nakayama).toBe(10005)
+        expect(TRACK_NAME_TO_ID.Kyoto).toBe(10008)
+        expect(TRACK_NAME_TO_ID.Hanshin).toBe(10009)
+        expect(TRACK_NAME_TO_ID.Ooi).toBe(10101)
     })
 })
 
@@ -1092,9 +1096,7 @@ describe('extractStaticRestrictions', () => {
     })
 
     it('extracts single running_style restriction', () => {
-        const result = extractStaticRestrictions(
-            'running_style==1&phase==0',
-        )
+        const result = extractStaticRestrictions('running_style==1&phase==0')
         expect(result.runningStyles).toEqual([1])
     })
 
@@ -1109,9 +1111,7 @@ describe('extractStaticRestrictions', () => {
     })
 
     it('extracts ground_type restriction', () => {
-        const result = extractStaticRestrictions(
-            'ground_type==2&phase==1',
-        )
+        const result = extractStaticRestrictions('ground_type==2&phase==1')
         expect(result.groundTypes).toEqual([2])
     })
 
@@ -1185,6 +1185,7 @@ describe('canSkillTrigger', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1199,6 +1200,7 @@ describe('canSkillTrigger', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1213,6 +1215,7 @@ describe('canSkillTrigger', () => {
             distanceType: 2,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1227,6 +1230,7 @@ describe('canSkillTrigger', () => {
             distanceType: null,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1241,6 +1245,7 @@ describe('canSkillTrigger', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1255,6 +1260,7 @@ describe('canSkillTrigger', () => {
             distanceType: 4,
             runningStyle: 2,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1269,6 +1275,7 @@ describe('canSkillTrigger', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1283,6 +1290,7 @@ describe('canSkillTrigger', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1297,6 +1305,7 @@ describe('canSkillTrigger', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1311,6 +1320,7 @@ describe('canSkillTrigger', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: null,
             weather: 1,
             season: 1,
@@ -1329,6 +1339,7 @@ describe('canSkillTrigger', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1347,6 +1358,7 @@ describe('canSkillTrigger', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1527,6 +1539,7 @@ describe('canSkillTrigger with empty restriction arrays', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1541,6 +1554,7 @@ describe('canSkillTrigger with empty restriction arrays', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1555,6 +1569,7 @@ describe('canSkillTrigger with empty restriction arrays', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1569,6 +1584,7 @@ describe('canSkillTrigger with empty restriction arrays', () => {
             distanceType: null, // Random distance type
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1589,6 +1605,7 @@ describe('canSkillTrigger with empty restriction arrays', () => {
             distanceType: 4,
             runningStyle: 3,
             groundType: 1,
+            isBasisDistance: null,
             groundCondition: 1,
             weather: 1,
             season: 1,
@@ -1612,13 +1629,16 @@ describe('skill filtering by distance type', () => {
 
     it('Long Straightaways ○ is filtered OUT when distance is 2000m (Medium)', () => {
         // Long Straightaways ○ has condition: distance_type==4
-        const restrictions = extractStaticRestrictions('distance_type==4&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'distance_type==4&straight_random==1',
+        )
         expect(restrictions.distanceTypes).toEqual([4])
 
         const settings: CurrentSettings = {
             distanceType: getDistanceType(2000), // 3 (Medium)
             runningStyle: 3,
             groundType: null,
+            isBasisDistance: null,
             groundCondition: null,
             weather: null,
             season: null,
@@ -1630,13 +1650,16 @@ describe('skill filtering by distance type', () => {
 
     it('Medium Straightaways ○ triggers when distance is 2000m (Medium)', () => {
         // Medium Straightaways ○ has condition: distance_type==3
-        const restrictions = extractStaticRestrictions('distance_type==3&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'distance_type==3&straight_random==1',
+        )
         expect(restrictions.distanceTypes).toEqual([3])
 
         const settings: CurrentSettings = {
             distanceType: getDistanceType(2000), // 3 (Medium)
             runningStyle: 3,
             groundType: null,
+            isBasisDistance: null,
             groundCondition: null,
             weather: null,
             season: null,
@@ -1647,13 +1670,16 @@ describe('skill filtering by distance type', () => {
 
     it('Long Straightaways ○ triggers when distance is 3000m (Long)', () => {
         // Long Straightaways ○ has condition: distance_type==4
-        const restrictions = extractStaticRestrictions('distance_type==4&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'distance_type==4&straight_random==1',
+        )
         expect(restrictions.distanceTypes).toEqual([4])
 
         const settings: CurrentSettings = {
             distanceType: getDistanceType(3000), // 4 (Long)
             runningStyle: 3,
             groundType: null,
+            isBasisDistance: null,
             groundCondition: null,
             weather: null,
             season: null,
@@ -1665,13 +1691,16 @@ describe('skill filtering by distance type', () => {
 
     it('Medium Straightaways ○ is filtered OUT when distance is 3000m (Long)', () => {
         // Medium Straightaways ○ has condition: distance_type==3
-        const restrictions = extractStaticRestrictions('distance_type==3&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'distance_type==3&straight_random==1',
+        )
         expect(restrictions.distanceTypes).toEqual([3])
 
         const settings: CurrentSettings = {
             distanceType: getDistanceType(3000), // 4 (Long)
             runningStyle: 3,
             groundType: null,
+            isBasisDistance: null,
             groundCondition: null,
             weather: null,
             season: null,
@@ -1681,14 +1710,21 @@ describe('skill filtering by distance type', () => {
     })
 
     it('Sprint Straightaways ○ only triggers at Sprint distances (<=1400m)', () => {
-        const restrictions = extractStaticRestrictions('distance_type==1&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'distance_type==1&straight_random==1',
+        )
         expect(restrictions.distanceTypes).toEqual([1])
 
         // 1200m = Sprint
         const sprintSettings: CurrentSettings = {
             distanceType: getDistanceType(1200), // 1 (Sprint)
             runningStyle: 3,
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(sprintSettings.distanceType).toBe(1)
         expect(canSkillTrigger(restrictions, sprintSettings)).toBe(true)
@@ -1697,21 +1733,33 @@ describe('skill filtering by distance type', () => {
         const mileSettings: CurrentSettings = {
             distanceType: getDistanceType(1600), // 2 (Mile)
             runningStyle: 3,
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(mileSettings.distanceType).toBe(2)
         expect(canSkillTrigger(restrictions, mileSettings)).toBe(false)
     })
 
     it('Mile Straightaways ○ only triggers at Mile distances (1401-1800m)', () => {
-        const restrictions = extractStaticRestrictions('distance_type==2&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'distance_type==2&straight_random==1',
+        )
         expect(restrictions.distanceTypes).toEqual([2])
 
         // 1600m = Mile
         const mileSettings: CurrentSettings = {
             distanceType: getDistanceType(1600), // 2 (Mile)
             runningStyle: 3,
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, mileSettings)).toBe(true)
 
@@ -1719,18 +1767,30 @@ describe('skill filtering by distance type', () => {
         const mediumSettings: CurrentSettings = {
             distanceType: getDistanceType(2000), // 3 (Medium)
             runningStyle: 3,
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, mediumSettings)).toBe(false)
     })
 
     it('skills with distance_type restriction pass when distanceType is null (random)', () => {
-        const restrictions = extractStaticRestrictions('distance_type==4&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'distance_type==4&straight_random==1',
+        )
 
         const randomSettings: CurrentSettings = {
             distanceType: null, // Random distance (e.g., <Random> or distance category)
             runningStyle: 3,
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         // When distanceType is null (random), skill should pass (might trigger)
         expect(canSkillTrigger(restrictions, randomSettings)).toBe(true)
@@ -1759,7 +1819,7 @@ describe('extractSkillRestrictions integration with distance filtering', () => {
     it('combines distance filter with running style filter', () => {
         // Skill that requires both Long distance AND Front Runner
         const restrictions = extractStaticRestrictions(
-            'distance_type==4&running_style==1&phase>=2'
+            'distance_type==4&running_style==1&phase>=2',
         )
         expect(restrictions.distanceTypes).toEqual([4])
         expect(restrictions.runningStyles).toEqual([1])
@@ -1768,7 +1828,12 @@ describe('extractSkillRestrictions integration with distance filtering', () => {
         const validSettings: CurrentSettings = {
             distanceType: 4,
             runningStyle: 1,
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, validSettings)).toBe(true)
 
@@ -1776,7 +1841,12 @@ describe('extractSkillRestrictions integration with distance filtering', () => {
         const wrongStyleSettings: CurrentSettings = {
             distanceType: 4,
             runningStyle: 2,
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, wrongStyleSettings)).toBe(false)
 
@@ -1784,7 +1854,12 @@ describe('extractSkillRestrictions integration with distance filtering', () => {
         const wrongDistanceSettings: CurrentSettings = {
             distanceType: 3,
             runningStyle: 1,
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, wrongDistanceSettings)).toBe(false)
     })
@@ -1795,64 +1870,106 @@ describe('skill filtering by strategy', () => {
 
     it('Front Runner Straightaways ○ triggers for Front Runner', () => {
         // running_style==1
-        const restrictions = extractStaticRestrictions('running_style==1&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'running_style==1&straight_random==1',
+        )
         const settings: CurrentSettings = {
             distanceType: null,
             runningStyle: STRATEGY_TO_RUNNING_STYLE['Front Runner'], // 1
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, settings)).toBe(true)
     })
 
     it('Front Runner Straightaways ○ does NOT trigger for Pace Chaser', () => {
-        const restrictions = extractStaticRestrictions('running_style==1&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'running_style==1&straight_random==1',
+        )
         const settings: CurrentSettings = {
             distanceType: null,
             runningStyle: STRATEGY_TO_RUNNING_STYLE['Pace Chaser'], // 2
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, settings)).toBe(false)
     })
 
     it('Pace Chaser Straightaways ○ triggers for Pace Chaser', () => {
         // running_style==2
-        const restrictions = extractStaticRestrictions('running_style==2&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'running_style==2&straight_random==1',
+        )
         const settings: CurrentSettings = {
             distanceType: null,
             runningStyle: STRATEGY_TO_RUNNING_STYLE['Pace Chaser'], // 2
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, settings)).toBe(true)
     })
 
     it('Pace Chaser Straightaways ○ does NOT trigger for Front Runner', () => {
-        const restrictions = extractStaticRestrictions('running_style==2&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'running_style==2&straight_random==1',
+        )
         const settings: CurrentSettings = {
             distanceType: null,
             runningStyle: STRATEGY_TO_RUNNING_STYLE['Front Runner'], // 1
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, settings)).toBe(false)
     })
 
     it('Late Surger Straightaways ○ triggers for Late Surger', () => {
         // running_style==3
-        const restrictions = extractStaticRestrictions('running_style==3&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'running_style==3&straight_random==1',
+        )
         const settings: CurrentSettings = {
             distanceType: null,
             runningStyle: STRATEGY_TO_RUNNING_STYLE['Late Surger'], // 3
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, settings)).toBe(true)
     })
 
     it('End Closer Straightaways ○ triggers for End Closer', () => {
         // running_style==4
-        const restrictions = extractStaticRestrictions('running_style==4&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'running_style==4&straight_random==1',
+        )
         const settings: CurrentSettings = {
             distanceType: null,
             runningStyle: STRATEGY_TO_RUNNING_STYLE['End Closer'], // 4
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, settings)).toBe(true)
     })
@@ -1860,21 +1977,184 @@ describe('skill filtering by strategy', () => {
     // Special case: Runaway uses Front Runner skills
     it('Front Runner Straightaways ○ triggers for Runaway (special case)', () => {
         // Runaway (5) should match running_style==1 skills because there are no Runaway-specific skills
-        const restrictions = extractStaticRestrictions('running_style==1&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'running_style==1&straight_random==1',
+        )
         const settings: CurrentSettings = {
             distanceType: null,
-            runningStyle: STRATEGY_TO_RUNNING_STYLE['Runaway'], // 5
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE.Runaway, // 5
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
         }
         expect(canSkillTrigger(restrictions, settings)).toBe(true)
     })
 
     it('Pace Chaser Straightaways ○ does NOT trigger for Runaway', () => {
-        const restrictions = extractStaticRestrictions('running_style==2&straight_random==1')
+        const restrictions = extractStaticRestrictions(
+            'running_style==2&straight_random==1',
+        )
         const settings: CurrentSettings = {
             distanceType: null,
-            runningStyle: STRATEGY_TO_RUNNING_STYLE['Runaway'], // 5
-            groundType: null, groundCondition: null, weather: null, season: null, trackId: null,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE.Runaway, // 5
+            groundType: null,
+            isBasisDistance: null,
+            groundCondition: null,
+            weather: null,
+            season: null,
+            trackId: null,
+        }
+        expect(canSkillTrigger(restrictions, settings)).toBe(false)
+    })
+})
+
+describe('A Small Breather filtering', () => {
+    it('A Small Breather (Late Surger skill) should NOT trigger for Pace Chaser', () => {
+        // A Small Breather has condition: running_style==3&phase_random==2
+        const restrictions = extractStaticRestrictions(
+            'running_style==3&phase_random==2',
+        )
+        expect(restrictions.runningStyles).toEqual([3]) // Late Surger
+
+        const settings: CurrentSettings = {
+            distanceType: 4,
+            groundCondition: 1,
+            groundType: 1,
+            isBasisDistance: false,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE['Pace Chaser'], // 2
+            season: 4,
+            trackId: 10005,
+            weather: 1,
+        }
+        expect(settings.runningStyle).toBe(2) // Verify Pace Chaser = 2
+        expect(canSkillTrigger(restrictions, settings)).toBe(false)
+    })
+
+    it('A Small Breather (Late Surger skill) SHOULD trigger for Late Surger', () => {
+        const restrictions = extractStaticRestrictions(
+            'running_style==3&phase_random==2',
+        )
+        expect(restrictions.runningStyles).toEqual([3])
+
+        const settings: CurrentSettings = {
+            distanceType: 4,
+            groundCondition: 1,
+            groundType: 1,
+            isBasisDistance: false,
+            runningStyle: STRATEGY_TO_RUNNING_STYLE['Late Surger'], // 3
+            season: 4,
+            trackId: 10005,
+            weather: 1,
+        }
+        expect(settings.runningStyle).toBe(3) // Verify Late Surger = 3
+        expect(canSkillTrigger(restrictions, settings)).toBe(true)
+    })
+})
+
+describe('is_basis_distance filtering', () => {
+    it('extracts is_basis_distance==1 restriction for standard distance skills', () => {
+        const result = extractStaticRestrictions(
+            'is_basis_distance==1&phase>=2',
+        )
+        expect(result.isBasisDistance).toEqual([1])
+    })
+
+    it('extracts is_basis_distance==0 restriction for non-standard distance skills', () => {
+        const result = extractStaticRestrictions(
+            'is_basis_distance==0&phase>=2',
+        )
+        expect(result.isBasisDistance).toEqual([0])
+    })
+
+    it('returns true for standard distance skill on 2400m (divisible by 400)', () => {
+        const restrictions: SkillRestrictions = { isBasisDistance: [1] }
+        const settings: CurrentSettings = {
+            distanceType: 3,
+            groundCondition: 1,
+            groundType: 1,
+            isBasisDistance: true, // 2400m % 400 == 0
+            runningStyle: 3,
+            season: 1,
+            trackId: 10006,
+            weather: 1,
+        }
+        expect(canSkillTrigger(restrictions, settings)).toBe(true)
+    })
+
+    it('returns false for standard distance skill on 2500m (not divisible by 400)', () => {
+        const restrictions: SkillRestrictions = { isBasisDistance: [1] }
+        const settings: CurrentSettings = {
+            distanceType: 4,
+            groundCondition: 1,
+            groundType: 1,
+            isBasisDistance: false, // 2500m % 400 != 0
+            runningStyle: 3,
+            season: 1,
+            trackId: 10006,
+            weather: 1,
+        }
+        expect(canSkillTrigger(restrictions, settings)).toBe(false)
+    })
+
+    it('returns true for non-standard distance skill on 2500m', () => {
+        const restrictions: SkillRestrictions = { isBasisDistance: [0] }
+        const settings: CurrentSettings = {
+            distanceType: 4,
+            groundCondition: 1,
+            groundType: 1,
+            isBasisDistance: false, // 2500m % 400 != 0
+            runningStyle: 3,
+            season: 1,
+            trackId: 10006,
+            weather: 1,
+        }
+        expect(canSkillTrigger(restrictions, settings)).toBe(true)
+    })
+
+    it('returns false for non-standard distance skill on 2000m', () => {
+        const restrictions: SkillRestrictions = { isBasisDistance: [0] }
+        const settings: CurrentSettings = {
+            distanceType: 3,
+            groundCondition: 1,
+            groundType: 1,
+            isBasisDistance: true, // 2000m % 400 == 0
+            runningStyle: 3,
+            season: 1,
+            trackId: 10006,
+            weather: 1,
+        }
+        expect(canSkillTrigger(restrictions, settings)).toBe(false)
+    })
+
+    it('returns true when isBasisDistance is null (random/category)', () => {
+        const restrictions: SkillRestrictions = { isBasisDistance: [1] }
+        const settings: CurrentSettings = {
+            distanceType: null,
+            groundCondition: null,
+            groundType: null,
+            isBasisDistance: null, // Random courses
+            runningStyle: 3,
+            season: null,
+            trackId: null,
+            weather: null,
+        }
+        expect(canSkillTrigger(restrictions, settings)).toBe(true)
+    })
+
+    it('returns false for empty isBasisDistance array (impossible condition)', () => {
+        const restrictions: SkillRestrictions = { isBasisDistance: [] }
+        const settings: CurrentSettings = {
+            distanceType: 3,
+            groundCondition: 1,
+            groundType: 1,
+            isBasisDistance: true,
+            runningStyle: 3,
+            season: 1,
+            trackId: 10006,
+            weather: 1,
         }
         expect(canSkillTrigger(restrictions, settings)).toBe(false)
     })

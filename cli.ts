@@ -8,10 +8,9 @@ import type {
     Mood,
 } from '../uma-tools/uma-skill-tools/RaceParameters'
 import {
-    HorseState as HorseStateBase,
+    type HorseState,
     SkillSet,
 } from '../uma-tools/components/HorseDefTypes'
-import { ThresholdStat } from '../uma-tools/uma-skill-tools/CourseData'
 import type { SkillMeta, RawCourseData } from './types'
 import {
     Grade,
@@ -52,8 +51,8 @@ import {
     type SkillDataEntry,
 } from './utils'
 
-// HorseState extends immutable.js Record which TypeScript can't infer properly
-interface HorseStateInstance {
+/** Creates a HorseState object for simulation */
+function createHorseState(props: {
     speed: number
     stamina: number
     power: number
@@ -63,19 +62,31 @@ interface HorseStateInstance {
     distanceAptitude: string
     surfaceAptitude: string
     strategyAptitude: string
-    skills: { forEach(fn: (value: string) => void): void }
-    toJS(): Record<string, unknown>
+    skills: Map<string, string>
+}): HorseState {
+    return {
+        outfitId: '',
+        speed: props.speed,
+        stamina: props.stamina,
+        power: props.power,
+        guts: props.guts,
+        wisdom: props.wisdom,
+        strategy: props.strategy as HorseState['strategy'],
+        distanceAptitude:
+            props.distanceAptitude as HorseState['distanceAptitude'],
+        surfaceAptitude: props.surfaceAptitude as HorseState['surfaceAptitude'],
+        strategyAptitude:
+            props.strategyAptitude as HorseState['strategyAptitude'],
+        skills: props.skills as HorseState['skills'],
+    }
 }
-const HorseState = HorseStateBase as unknown as new (
-    props: Partial<HorseStateInstance>,
-) => HorseStateInstance
 
 interface Config {
-    skills?: Record<string, { discount?: number | null }>
+    skills?: Record<string, { discount?: number | null; default?: number | null }>
     track?: {
         courseId?: string
         trackName?: string
-        distance?: number
+        distance?: number | string
         surface?: string
         groundCondition?: string
         weather?: string
@@ -341,7 +352,7 @@ async function main() {
         }
     }
 
-    const baseUma = new HorseState({
+    const baseUma = createHorseState({
         speed: umaConfig.speed ?? 1200,
         stamina: umaConfig.stamina ?? 1200,
         power: umaConfig.power ?? 800,
@@ -385,18 +396,19 @@ async function main() {
                   : typeof distanceValue === 'number'
                     ? getDistanceType(distanceValue)
                     : null,
-        runningStyle: STRATEGY_TO_RUNNING_STYLE[strategyName] ?? 3,
-        groundType: parseSurface(config.track.surface),
         groundCondition: useRandomCondition
             ? null
             : config.track.groundCondition
               ? parseGroundCondition(config.track.groundCondition)
               : 1, // Default to Good
-        weather: useRandomWeather
-            ? null
-            : config.track.weather
-              ? parseWeather(config.track.weather)
-              : 1, // Default to Sunny
+        groundType: parseSurface(config.track.surface),
+        isBasisDistance:
+            distanceCategory !== null || useMultipleCourses
+                ? null // Distance category or random means unknown basis
+                : typeof distanceValue === 'number'
+                  ? distanceValue % 400 === 0
+                  : null,
+        runningStyle: STRATEGY_TO_RUNNING_STYLE[strategyName] ?? 3,
         season: useRandomSeason
             ? null
             : config.track.season
@@ -408,6 +420,11 @@ async function main() {
                 : trackNameValue
                   ? (TRACK_NAME_TO_ID[trackNameValue] ?? null)
                   : null,
+        weather: useRandomWeather
+            ? null
+            : config.track.weather
+              ? parseWeather(config.track.weather)
+              : 1, // Default to Sunny
     }
 
     for (const [skillName, skillConfig] of Object.entries(configSkills)) {
@@ -594,7 +611,10 @@ async function main() {
                         skillName,
                         courses: courses.map((c) => c.course),
                         racedef,
-                        baseUma: baseUma.toJS(),
+                        baseUma: {
+                            ...baseUma,
+                            skills: Object.fromEntries(baseUma.skills),
+                        },
                         simOptions,
                         numSimulations,
                         useRandomMood,

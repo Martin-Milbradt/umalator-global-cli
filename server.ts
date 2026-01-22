@@ -9,10 +9,7 @@ import {
 import { resolve, join, dirname } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import {
-    buildSkillNameLookup,
-    normalizeConfigSkillNames,
-} from './utils'
+import { buildSkillNameLookup, normalizeConfigSkillNames } from './utils'
 import type { SkillMeta, RawCourseData } from './types'
 import type { SkillDataEntry } from './utils'
 
@@ -315,10 +312,21 @@ app.get('/api/run', (req, res) => {
     }
 
     const sendStderr = (data: Buffer): void => {
+        if (requestClosed) {
+            return
+        }
         const dataStr = data.toString()
         stderrOutput += dataStr
         console.error(`CLI stderr:`, dataStr)
-        sendData(data)
+        // Send warnings as a distinct message type
+        try {
+            res.write(
+                `data: ${JSON.stringify({ type: 'warning', data: dataStr })}\n\n`,
+            )
+        } catch (error) {
+            console.error('Error writing warning to response:', error)
+            requestClosed = true
+        }
     }
 
     if (child.stdout) {

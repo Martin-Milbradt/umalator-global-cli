@@ -70,6 +70,7 @@ interface SkillRestrictions {
     distanceTypes?: number[]
     groundConditions?: number[]
     groundTypes?: number[]
+    isBasisDistance?: number[]
     runningStyles?: number[]
     seasons?: number[]
     trackIds?: number[]
@@ -80,6 +81,7 @@ interface CurrentSettings {
     distanceType: number | null
     groundCondition: number | null
     groundType: number | null
+    isBasisDistance: boolean | null
     runningStyle: number
     season: number | null
     trackId: number | null
@@ -204,6 +206,7 @@ const STATIC_FIELDS = [
     'distance_type',
     'ground_condition',
     'ground_type',
+    'is_basis_distance',
     'running_style',
     'season',
     'track_id',
@@ -217,6 +220,7 @@ const FIELD_MAX_VALUES: Partial<Record<StaticField, number>> = {
     distance_type: 4, // Sprint=1, Mile=2, Medium=3, Long=4
     ground_condition: 4, // Good=1, Yielding=2, Soft=3, Heavy=4
     ground_type: 2, // Turf=1, Dirt=2
+    is_basis_distance: 1, // 0=non-standard, 1=standard (divisible by 400)
     running_style: 5, // Runaway=1, Front Runner=2, Pace Chaser=3, Late Surger=4, End Closer=5
     season: 5, // Spring=1, Summer=2, Autumn=3, Winter=4, Sakura=5
     weather: 4, // Sunny=1, Cloudy=2, Rainy=3, Snowy=4
@@ -301,6 +305,9 @@ function parseAndBranch(branch: string): SkillRestrictions {
             case 'ground_type':
                 restrictions.groundTypes = parsed.values
                 break
+            case 'is_basis_distance':
+                restrictions.isBasisDistance = parsed.values
+                break
             case 'running_style':
                 restrictions.runningStyles = parsed.values
                 break
@@ -328,6 +335,7 @@ function mergeRestrictions(
         'distanceTypes',
         'groundConditions',
         'groundTypes',
+        'isBasisDistance',
         'runningStyles',
         'seasons',
         'trackIds',
@@ -354,6 +362,7 @@ function intersectRestrictions(
         'distanceTypes',
         'groundConditions',
         'groundTypes',
+        'isBasisDistance',
         'runningStyles',
         'seasons',
         'trackIds',
@@ -493,7 +502,11 @@ function canSkillTrigger(
         const effectiveRunningStyle = settings.runningStyle
         let matches = restrictions.runningStyles.includes(effectiveRunningStyle)
         // Runaway (5) can trigger Front Runner (1) skills
-        if (!matches && effectiveRunningStyle === 5 && restrictions.runningStyles.includes(1)) {
+        if (
+            !matches &&
+            effectiveRunningStyle === 5 &&
+            restrictions.runningStyles.includes(1)
+        ) {
             matches = true
         }
         if (!matches) {
@@ -513,13 +526,30 @@ function canSkillTrigger(
         }
     }
 
+    // Basis distance (standard vs non-standard)
+    if (restrictions.isBasisDistance) {
+        if (restrictions.isBasisDistance.length === 0) {
+            return false // Impossible condition from intersection
+        }
+        if (settings.isBasisDistance !== null) {
+            const basisValue = settings.isBasisDistance ? 1 : 0
+            if (!restrictions.isBasisDistance.includes(basisValue)) {
+                return false
+            }
+        }
+    }
+
     // Ground condition
     if (restrictions.groundConditions) {
         if (restrictions.groundConditions.length === 0) {
             return false // Impossible condition from intersection
         }
         if (settings.groundCondition !== null) {
-            if (!restrictions.groundConditions.includes(settings.groundCondition)) {
+            if (
+                !restrictions.groundConditions.includes(
+                    settings.groundCondition,
+                )
+            ) {
                 return false
             }
         }
@@ -580,34 +610,38 @@ function getCurrentSettings(): CurrentSettings {
     if (!currentConfig) {
         return {
             distanceType: null,
-            runningStyle: 3,
-            groundType: null,
             groundCondition: null,
-            weather: null,
+            groundType: null,
+            isBasisDistance: null,
+            runningStyle: 3,
             season: null,
             trackId: null,
+            weather: null,
         }
     }
 
     const track = currentConfig.track
     const uma = currentConfig.uma
 
-    // Distance type
+    // Distance type and basis distance
     let distanceType: number | null = null
+    let isBasisDistance: boolean | null = null
     if (track?.distance) {
         if (typeof track.distance === 'number') {
             distanceType = getDistanceType(track.distance)
+            isBasisDistance = track.distance % 400 === 0
         } else if (
             typeof track.distance === 'string' &&
             !isDistanceCategory(track.distance) &&
             !isRandomValue(track.distance)
         ) {
             const parsed = parseInt(track.distance, 10)
-            if (!isNaN(parsed)) {
+            if (!Number.isNaN(parsed)) {
                 distanceType = getDistanceType(parsed)
+                isBasisDistance = parsed % 400 === 0
             }
         }
-        // If distance category or random, distanceType stays null
+        // If distance category or random, distanceType and isBasisDistance stay null
     }
 
     // Running style - always required, defaults to Pace Chaser (3)
@@ -656,6 +690,7 @@ function getCurrentSettings(): CurrentSettings {
         distanceType,
         groundCondition,
         groundType,
+        isBasisDistance,
         runningStyle,
         season,
         trackId,
@@ -697,7 +732,6 @@ function canSkillTriggerByName(skillName: string): boolean {
 })().catch(() => {
     showToast({ type: 'error', message: 'Failed to load skill names' })
 })
-
 ;(async function loadSkillmetaOnInit() {
     const response = await fetch('/api/skillmeta')
     if (!response.ok) {
@@ -712,7 +746,6 @@ function canSkillTriggerByName(skillName: string): boolean {
 })().catch(() => {
     showToast({ type: 'error', message: 'Failed to load skill metadata' })
 })
-
 ;(async function loadSkillDataOnInit() {
     const response = await fetch('/api/skilldata')
     if (!response.ok) {
@@ -1090,7 +1123,10 @@ function renderSkills(): void {
                     (currentDiscount === null || currentDiscount === undefined))
             if (isCurrentlyDefault) {
                 updateSkillVariantsDefault(skillName, 'remove')
-            } else if (currentDiscount === null || currentDiscount === undefined) {
+            } else if (
+                currentDiscount === null ||
+                currentDiscount === undefined
+            ) {
                 updateSkillVariantsDefault(skillName, 'remove')
             } else {
                 updateSkillVariantsDefault(skillName, 'set', currentDiscount)
@@ -1751,42 +1787,144 @@ function renderUma(): void {
         return wrapper
     }
 
+    // Skills section (first row)
+    const skillsDiv = document.createElement('div')
+    skillsDiv.className = 'flex flex-wrap items-center gap-1.5 mb-2'
+    const skillsLabel = document.createElement('span')
+    skillsLabel.className = 'text-zinc-300 text-[13px] whitespace-nowrap'
+    skillsLabel.textContent = 'Skills:'
+    skillsDiv.appendChild(skillsLabel)
+
+    const skills = uma.skills || []
+
+    function updateSkills(newSkills: string[]) {
+        if (!currentConfig) return
+        if (!currentConfig.uma) {
+            currentConfig.uma = {}
+        }
+        currentConfig.uma.skills = newSkills
+        renderUma()
+        autoSave()
+    }
+
+    function createSkillPill(skill: string, index: number): HTMLElement {
+        const pill = document.createElement('span')
+        pill.className =
+            'inline-flex items-center gap-1 px-2 py-1 bg-zinc-700 border border-zinc-600 text-zinc-200 rounded text-[13px] group hover:bg-zinc-600 transition-colors'
+
+        const textSpan = document.createElement('span')
+        textSpan.textContent = skill
+        textSpan.className = 'cursor-text'
+        textSpan.addEventListener('click', (e) => {
+            e.stopPropagation()
+            // Replace pill with edit input
+            const editInput = document.createElement('input')
+            editInput.type = 'text'
+            editInput.value = skill
+            editInput.className =
+                'bg-zinc-800 text-zinc-200 text-[13px] px-1 py-1 rounded border border-sky-500 outline-none min-w-[100px]'
+            editInput.style.width = `${Math.max(100, skill.length * 8)}px`
+
+            const finishEdit = () => {
+                const newValue = getCanonicalSkillName(editInput.value.trim())
+                if (newValue && newValue !== skill) {
+                    const newSkills = [...skills]
+                    newSkills[index] = newValue
+                    updateSkills(newSkills)
+                } else if (!newValue) {
+                    // Empty value removes the skill
+                    const newSkills = skills.filter((_, i) => i !== index)
+                    updateSkills(newSkills)
+                } else {
+                    renderUma()
+                }
+            }
+
+            editInput.addEventListener('blur', finishEdit)
+            editInput.addEventListener('keydown', (ke) => {
+                if (ke.key === 'Enter') {
+                    ke.preventDefault()
+                    editInput.blur()
+                } else if (ke.key === 'Escape') {
+                    ke.preventDefault()
+                    renderUma()
+                }
+            })
+
+            pill.replaceWith(editInput)
+            editInput.focus()
+            editInput.select()
+        })
+
+        const removeBtn = document.createElement('button')
+        removeBtn.type = 'button'
+        removeBtn.className =
+            'text-zinc-400 hover:text-zinc-100 transition-colors leading-none text-xs'
+        removeBtn.innerHTML = '&times;'
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation()
+            const newSkills = skills.filter((_, i) => i !== index)
+            updateSkills(newSkills)
+        })
+
+        pill.appendChild(textSpan)
+        pill.appendChild(removeBtn)
+        return pill
+    }
+
+    skills.forEach((skill, index) => {
+        skillsDiv.appendChild(createSkillPill(skill, index))
+    })
+
+    // Add button (blue "+") to add new skills
+    const addButton = document.createElement('button')
+    addButton.type = 'button'
+    addButton.className =
+        'w-6 h-6 rounded text-lg leading-none cursor-pointer transition-colors bg-sky-600 text-white border-none hover:bg-sky-700 flex items-center justify-center p-0'
+    addButton.textContent = '+'
+    addButton.title = 'Add skill'
+    addButton.addEventListener('click', () => {
+        // Replace button with input
+        const addInput = document.createElement('input')
+        addInput.type = 'text'
+        addInput.className =
+            'bg-zinc-800 text-zinc-200 text-[13px] px-1 py-1 rounded border border-sky-500 outline-none min-w-[100px]'
+        addInput.placeholder = 'Skill name...'
+
+        const finishAdd = () => {
+            const newSkill = getCanonicalSkillName(addInput.value.trim())
+            if (newSkill) {
+                updateSkills([...skills, newSkill])
+            } else {
+                renderUma()
+            }
+        }
+
+        addInput.addEventListener('blur', finishAdd)
+        addInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault()
+                addInput.blur()
+            } else if (e.key === 'Escape') {
+                e.preventDefault()
+                renderUma()
+            }
+        })
+
+        addButton.replaceWith(addInput)
+        addInput.focus()
+    })
+
+    skillsDiv.appendChild(addButton)
+    container.appendChild(skillsDiv)
+
+    // Stats section (second row)
     const line = document.createElement('div')
     line.className = 'flex flex-wrap items-center gap-1 mb-2'
     fields.forEach((field) => {
         line.appendChild(createUmaField(field))
     })
     container.appendChild(line)
-
-    const skillsDiv = document.createElement('div')
-    skillsDiv.className = 'flex flex-wrap items-center gap-1'
-    const skillsWrapper = document.createElement('span')
-    skillsWrapper.className = 'inline-flex items-center gap-1 flex-1 min-w-0'
-    const skillsLabel = document.createElement('span')
-    skillsLabel.className = 'text-zinc-300 text-[13px] whitespace-nowrap mb-2'
-    skillsLabel.textContent = 'Skills: '
-    skillsWrapper.appendChild(skillsLabel)
-    const skillsInput = document.createElement('input')
-    skillsInput.type = 'text'
-    skillsInput.className =
-        'py-1 px-1.5 bg-zinc-700 text-zinc-200 border border-zinc-600 rounded text-[13px] focus:outline-none focus:border-sky-500 flex-1 min-w-0 mb-2'
-    skillsInput.value = (uma.skills || []).join(', ')
-    skillsInput.addEventListener('change', (e) => {
-        const target = e.target as HTMLInputElement
-        if (!currentConfig) return
-        if (!currentConfig.uma) {
-            currentConfig.uma = {}
-        }
-        currentConfig.uma.skills = target.value
-            .split(',')
-            .map((s) => getCanonicalSkillName(s.trim()))
-            .filter((s) => s.length > 0)
-        renderUma()
-        autoSave()
-    })
-    skillsWrapper.appendChild(skillsInput)
-    skillsDiv.appendChild(skillsWrapper)
-    container.appendChild(skillsDiv)
 }
 
 async function saveConfig(): Promise<void> {
@@ -1882,6 +2020,21 @@ async function runCalculations(): Promise<void> {
                         } else if (data.type === 'output') {
                             output.textContent += data.data || ''
                             output.scrollTop = output.scrollHeight
+                        } else if (data.type === 'warning') {
+                            // Show warnings prominently via toast
+                            const warningText = (data.data || '').trim()
+                            if (warningText) {
+                                // Extract meaningful warning message
+                                const lines = warningText
+                                    .split('\n')
+                                    .filter((l) => l.trim())
+                                for (const line of lines) {
+                                    showToast({
+                                        type: 'warning',
+                                        message: line.trim(),
+                                    })
+                                }
+                            }
                         } else if (data.type === 'done') {
                             button.disabled = false
                             if (
@@ -2065,7 +2218,8 @@ function setupSkillsContainerDelegation(): void {
         const skillName = target.dataset.skill
         const discountValue = target.dataset.discount
         if (!skillName || !discountValue || !currentConfig) return
-        const discount = discountValue === '-' ? null : parseInt(discountValue, 10)
+        const discount =
+            discountValue === '-' ? null : parseInt(discountValue, 10)
         if (!currentConfig.skills[skillName]) {
             currentConfig.skills[skillName] = { discount: null }
         }
@@ -2087,7 +2241,10 @@ function setupSkillsContainerDelegation(): void {
 
             if (isCurrentlyDefault) {
                 updateSkillVariantsDefault(skillName, 'remove')
-            } else if (currentDiscount === null || currentDiscount === undefined) {
+            } else if (
+                currentDiscount === null ||
+                currentDiscount === undefined
+            ) {
                 updateSkillVariantsDefault(skillName, 'remove')
             } else {
                 updateSkillVariantsDefault(skillName, 'set', currentDiscount)

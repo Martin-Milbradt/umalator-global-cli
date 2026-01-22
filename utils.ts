@@ -1,12 +1,39 @@
 // Local constants mirroring const enum values (const enums aren't exported at runtime)
 // Values must match ../uma-tools/uma-skill-tools/RaceParameters.ts
-export const Grade = { Daily: 999, Debut: 900, G1: 100, G2: 200, G3: 300, Maiden: 800, OP: 400, PreOP: 700 } as const
+export const Grade = {
+    Daily: 999,
+    Debut: 900,
+    G1: 100,
+    G2: 200,
+    G3: 300,
+    Maiden: 800,
+    OP: 400,
+    PreOP: 700,
+} as const
 export type Grade = (typeof Grade)[keyof typeof Grade]
-export const GroundCondition = { Good: 1, Heavy: 4, Soft: 3, Yielding: 2 } as const
-export type GroundCondition = (typeof GroundCondition)[keyof typeof GroundCondition]
-export const Season = { Autumn: 3, Sakura: 5, Spring: 1, Summer: 2, Winter: 4 } as const
+export const GroundCondition = {
+    Good: 1,
+    Heavy: 4,
+    Soft: 3,
+    Yielding: 2,
+} as const
+export type GroundCondition =
+    (typeof GroundCondition)[keyof typeof GroundCondition]
+export const Season = {
+    Autumn: 3,
+    Sakura: 5,
+    Spring: 1,
+    Summer: 2,
+    Winter: 4,
+} as const
 export type Season = (typeof Season)[keyof typeof Season]
-export const Time = { Evening: 3, Midday: 2, Morning: 1, Night: 4, NoTime: 0 } as const
+export const Time = {
+    Evening: 3,
+    Midday: 2,
+    Morning: 1,
+    Night: 4,
+    NoTime: 0,
+} as const
 export type Time = (typeof Time)[keyof typeof Time]
 import type {
     DistanceType,
@@ -423,7 +450,14 @@ export function calculateSkillCost(
     skillConfig: { discount?: number | null },
     context: SkillCostContext,
 ): number {
-    const { skillMeta, baseUmaSkillIds, skillNames, configSkills, skillIdToName, skillNameToConfigKey } = context
+    const {
+        skillMeta,
+        baseUmaSkillIds,
+        skillNames,
+        configSkills,
+        skillIdToName,
+        skillNameToConfigKey,
+    } = context
     const currentSkill = skillMeta[skillId]
     const baseCost = currentSkill?.baseCost ?? 200
     const discount = skillConfig.discount ?? 0
@@ -470,8 +504,7 @@ export function calculateSkillCost(
                     if (skillName) {
                         const configKey =
                             skillNameToConfigKey[skillName] || skillName
-                        otherDiscount =
-                            configSkills[configKey]?.discount ?? 0
+                        otherDiscount = configSkills[configKey]?.discount ?? 0
                     }
                 }
 
@@ -640,7 +673,10 @@ export function normalizeConfigSkillNames(
     if (config.skills && typeof config.skills === 'object') {
         const normalizedSkills: Record<string, ConfigSkill> = {}
         for (const [skillName, skillData] of Object.entries(config.skills)) {
-            const canonicalName = getCanonicalSkillName(skillName, skillNameLookup)
+            const canonicalName = getCanonicalSkillName(
+                skillName,
+                skillNameLookup,
+            )
             normalizedSkills[canonicalName] = skillData
         }
         config.skills = normalizedSkills
@@ -653,7 +689,10 @@ export function normalizeConfigSkillNames(
     }
 
     if (config.uma?.unique && typeof config.uma.unique === 'string') {
-        config.uma.unique = getCanonicalSkillName(config.uma.unique, skillNameLookup)
+        config.uma.unique = getCanonicalSkillName(
+            config.uma.unique,
+            skillNameLookup,
+        )
     }
 
     return config
@@ -708,6 +747,7 @@ export interface SkillRestrictions {
     distanceTypes?: number[] // e.g., [4] for Long-only
     groundConditions?: number[] // e.g., [3,4] for Soft or Heavy
     groundTypes?: number[] // e.g., [2] for Dirt only
+    isBasisDistance?: number[] // [1] for standard (divisible by 400), [0] for non-standard
     runningStyles?: number[] // e.g., [3] for Pace Chaser only
     seasons?: number[] // e.g., [1] for Spring only
     trackIds?: number[] // e.g., [10001, 10005] for specific tracks
@@ -722,6 +762,7 @@ export interface CurrentSettings {
     distanceType: number | null // null if <Random> or distance category
     groundCondition: number | null // null if <Random>
     groundType: number | null // 1=Turf, 2=Dirt, null if random
+    isBasisDistance: boolean | null // true if distance % 400 == 0, null if random/category
     runningStyle: number // from uma.strategy (always known)
     season: number | null // null if <Random>
     trackId: number | null // null if <Random> location
@@ -733,6 +774,7 @@ const STATIC_FIELDS = [
     'distance_type',
     'ground_condition',
     'ground_type',
+    'is_basis_distance',
     'running_style',
     'season',
     'track_id',
@@ -746,6 +788,7 @@ const FIELD_MAX_VALUES: Partial<Record<StaticField, number>> = {
     distance_type: 4, // Sprint=1, Mile=2, Medium=3, Long=4
     ground_condition: 4, // Good=1, Yielding=2, Soft=3, Heavy=4
     ground_type: 2, // Turf=1, Dirt=2
+    is_basis_distance: 1, // 0=non-standard, 1=standard (divisible by 400)
     running_style: 5, // Runaway=1, Front Runner=2, Pace Chaser=3, Late Surger=4, End Closer=5
     season: 5, // Spring=1, Summer=2, Autumn=3, Winter=4, Sakura=5
     weather: 4, // Sunny=1, Cloudy=2, Rainy=3, Snowy=4
@@ -848,6 +891,9 @@ function parseAndBranch(branch: string): SkillRestrictions {
             case 'ground_type':
                 restrictions.groundTypes = parsed.values
                 break
+            case 'is_basis_distance':
+                restrictions.isBasisDistance = parsed.values
+                break
             case 'running_style':
                 restrictions.runningStyles = parsed.values
                 break
@@ -884,6 +930,7 @@ function mergeRestrictions(
         'distanceTypes',
         'groundConditions',
         'groundTypes',
+        'isBasisDistance',
         'runningStyles',
         'seasons',
         'trackIds',
@@ -919,6 +966,7 @@ function intersectRestrictions(
         'distanceTypes',
         'groundConditions',
         'groundTypes',
+        'isBasisDistance',
         'runningStyles',
         'seasons',
         'trackIds',
@@ -1046,7 +1094,11 @@ export function canSkillTrigger(
         const effectiveRunningStyle = settings.runningStyle
         let matches = restrictions.runningStyles.includes(effectiveRunningStyle)
         // Runaway (5) can trigger Front Runner (1) skills
-        if (!matches && effectiveRunningStyle === 5 && restrictions.runningStyles.includes(1)) {
+        if (
+            !matches &&
+            effectiveRunningStyle === 5 &&
+            restrictions.runningStyles.includes(1)
+        ) {
             matches = true
         }
         if (!matches) {
@@ -1066,13 +1118,30 @@ export function canSkillTrigger(
         }
     }
 
+    // Basis distance (standard vs non-standard)
+    if (restrictions.isBasisDistance) {
+        if (restrictions.isBasisDistance.length === 0) {
+            return false // Impossible condition from intersection
+        }
+        if (settings.isBasisDistance !== null) {
+            const basisValue = settings.isBasisDistance ? 1 : 0
+            if (!restrictions.isBasisDistance.includes(basisValue)) {
+                return false
+            }
+        }
+    }
+
     // Ground condition
     if (restrictions.groundConditions) {
         if (restrictions.groundConditions.length === 0) {
             return false // Impossible condition from intersection
         }
         if (settings.groundCondition !== null) {
-            if (!restrictions.groundConditions.includes(settings.groundCondition)) {
+            if (
+                !restrictions.groundConditions.includes(
+                    settings.groundCondition,
+                )
+            ) {
                 return false
             }
         }

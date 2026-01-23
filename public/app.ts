@@ -1420,6 +1420,8 @@ function renderTrack(): void {
         options?: string[]
         width: number
         dynamic?: boolean
+        min?: number
+        max?: number
     }
 
     const fields: Field[] = [
@@ -1492,7 +1494,7 @@ function renderTrack(): void {
                 'Sakura',
             ]),
         },
-        { key: 'numUmas', label: 'Umas', type: 'number', width: 50 },
+        { key: 'numUmas', label: 'Umas', type: 'number', width: 50, min: 1 },
         { key: 'courseId', label: 'Course ID', type: 'text', width: 70 },
     ]
 
@@ -1544,6 +1546,12 @@ function renderTrack(): void {
                     : String(fieldValue)
             if (field.width) {
                 input.style.width = `${field.width}px`
+            }
+            if (field.min !== undefined) {
+                input.min = String(field.min)
+            }
+            if (field.max !== undefined) {
+                input.max = String(field.max)
             }
         }
 
@@ -1677,6 +1685,8 @@ function renderUma(): void {
         type: 'select' | 'number' | 'text'
         options?: string[]
         width: number
+        min?: number
+        max?: number
     }
 
     const fields: UmaField[] = [
@@ -1713,7 +1723,7 @@ function renderUma(): void {
             options: aptitudeOptions,
             width: 35,
         },
-        { key: 'mood', label: 'Mood', type: 'number', width: 45 },
+        { key: 'mood', label: 'Mood', type: 'number', width: 45, min: -2, max: 2 },
         { key: 'unique', label: 'Unique', type: 'text', width: 280 },
     ]
 
@@ -1755,6 +1765,12 @@ function renderUma(): void {
                     : String(fieldValue)
             if (field.width) {
                 input.style.width = `${field.width}px`
+            }
+            if (field.min !== undefined) {
+                input.min = String(field.min)
+            }
+            if (field.max !== undefined) {
+                input.max = String(field.max)
             }
         }
 

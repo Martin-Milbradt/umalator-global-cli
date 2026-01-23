@@ -1,59 +1,142 @@
-import { Command } from 'commander'
 import { readFileSync } from 'node:fs'
+import { cpus } from 'node:os'
 import { resolve } from 'node:path'
 import { Worker } from 'node:worker_threads'
-import { cpus } from 'node:os'
-import type {
-    RaceParameters,
-    Mood,
-} from '../uma-tools/uma-skill-tools/RaceParameters'
+import { Command } from 'commander'
 import {
-    HorseState as HorseStateBase,
+    type HorseState,
     SkillSet,
 } from '../uma-tools/components/HorseDefTypes'
-import { ThresholdStat } from '../uma-tools/uma-skill-tools/CourseData'
-import type { SkillMeta, RawCourseData } from './types'
+import type {
+    Mood,
+    RaceParameters,
+} from '../uma-tools/uma-skill-tools/RaceParameters'
+import type { RawCourseData, SkillMeta } from './types'
 import {
-    Grade,
-    GroundCondition,
-    Season,
-    Time,
-    parseGroundCondition,
-    parseWeather,
-    parseSeason,
-    parseStrategyName,
-    formatStrategyName,
-    formatDistanceType,
-    formatSurface,
-    formatTurn,
-    parseDistanceCategory,
-    isRandomLocation,
-    isRandomValue,
-    createWeightedSeasonArray,
-    createWeightedWeatherArray,
-    createWeightedConditionArray,
-    findSkillIdByNameWithPreference,
-    findSkillVariantsByName,
-    processCourseData,
-    calculateSkillCost,
-    type SkillCostContext,
-    findMatchingCoursesWithFilters,
-    formatTrackDetails,
-    formatTable,
-    getDistanceType,
-    extractSkillRestrictions,
-    canSkillTrigger,
-    parseSurface,
-    STRATEGY_TO_RUNNING_STYLE,
-    TRACK_NAME_TO_ID,
-    type SkillResult,
     type CourseData,
     type CurrentSettings,
+    calculateSkillCost,
+    canSkillTrigger,
+    createWeightedConditionArray,
+    createWeightedSeasonArray,
+    createWeightedWeatherArray,
+    extractSkillRestrictions,
+    findMatchingCoursesWithFilters,
+    findSkillIdByNameWithPreference,
+    findSkillVariantsByName,
+    formatDistanceType,
+    formatStrategyName,
+    formatSurface,
+    formatTable,
+    formatTrackDetails,
+    formatTurn,
+    Grade,
+    GroundCondition,
+    getDistanceType,
+    isRandomLocation,
+    isRandomValue,
+    parseDistanceCategory,
+    parseGroundCondition,
+    parseSeason,
+    parseStrategyName,
+    parseSurface,
+    parseWeather,
+    processCourseData,
+    Season,
+    type SkillCostContext,
     type SkillDataEntry,
+    type SkillResult,
+    STRATEGY_TO_RUNNING_STYLE,
+    Time,
+    TRACK_NAME_TO_ID,
 } from './utils'
 
-// HorseState extends immutable.js Record which TypeScript can't infer properly
-interface HorseStateInstance {
+/**
+ * Parsed race condition that can be either a fixed value or random.
+ * When random, `value` is a placeholder for racedef (worker overrides it),
+ * and `forFiltering` is null (skill filtering accepts any value).
+ */
+interface RaceCondition<T> {
+    isRandom: boolean
+    value: T // Used in racedef (placeholder when random)
+    forFiltering: T | null // Used in currentSettings (null when random)
+    display: string // For console output
+    weighted: number[] | null // Weighted array for random sampling, null if not random
+}
+
+interface ParsedRaceConditions {
+    season: RaceCondition<number>
+    weather: RaceCondition<number>
+    groundCondition: RaceCondition<number>
+    mood: RaceCondition<Mood | null>
+}
+
+function parseRaceCondition<T>(
+    configValue: string | undefined,
+    isRandom: boolean,
+    randomPlaceholder: T,
+    parse: (v: string) => T,
+    createWeighted: (() => number[]) | null,
+): RaceCondition<T> {
+    if (isRandom) {
+        return {
+            isRandom: true,
+            value: randomPlaceholder,
+            forFiltering: null,
+            display: '<Random>',
+            weighted: createWeighted?.() ?? null,
+        }
+    }
+    const value = parse(configValue as string)
+    return {
+        isRandom: false,
+        value,
+        forFiltering: value,
+        display: configValue as string,
+        weighted: null,
+    }
+}
+
+function parseRaceConditions(
+    trackConfig: NonNullable<Config['track']>,
+    umaConfig: NonNullable<Config['uma']>,
+): ParsedRaceConditions {
+    const moodRandom = umaConfig.mood == null
+
+    return {
+        season: parseRaceCondition(
+            trackConfig.season,
+            isRandomValue(trackConfig.season),
+            Season.Spring,
+            parseSeason,
+            createWeightedSeasonArray,
+        ),
+        weather: parseRaceCondition(
+            trackConfig.weather,
+            isRandomValue(trackConfig.weather),
+            1,
+            parseWeather,
+            createWeightedWeatherArray,
+        ),
+        groundCondition: parseRaceCondition(
+            trackConfig.groundCondition,
+            isRandomValue(trackConfig.groundCondition),
+            GroundCondition.Good,
+            parseGroundCondition,
+            createWeightedConditionArray,
+        ),
+        mood: {
+            isRandom: moodRandom,
+            value: moodRandom ? null : (umaConfig.mood as Mood),
+            forFiltering: moodRandom ? null : (umaConfig.mood as Mood),
+            display: moodRandom ? '<Random>' : String(umaConfig.mood),
+            weighted: null, // Mood uses a fixed array [-2, -1, 0, 1, 2] in worker
+        },
+    }
+}
+
+/** Creates a HorseState object for simulation */
+function createHorseState(props: {
     speed: number
     stamina: number
     power: number
@@ -63,19 +146,34 @@ interface HorseStateInstance {
     distanceAptitude: string
     surfaceAptitude: string
     strategyAptitude: string
-    skills: { forEach(fn: (value: string) => void): void }
-    toJS(): Record<string, unknown>
+    skills: Map<string, string>
+}): HorseState {
+    return {
+        outfitId: '',
+        speed: props.speed,
+        stamina: props.stamina,
+        power: props.power,
+        guts: props.guts,
+        wisdom: props.wisdom,
+        strategy: props.strategy as HorseState['strategy'],
+        distanceAptitude:
+            props.distanceAptitude as HorseState['distanceAptitude'],
+        surfaceAptitude: props.surfaceAptitude as HorseState['surfaceAptitude'],
+        strategyAptitude:
+            props.strategyAptitude as HorseState['strategyAptitude'],
+        skills: props.skills as HorseState['skills'],
+    }
 }
-const HorseState = HorseStateBase as unknown as new (
-    props: Partial<HorseStateInstance>,
-) => HorseStateInstance
 
 interface Config {
-    skills?: Record<string, { discount?: number | null }>
+    skills?: Record<
+        string,
+        { discount?: number | null; default?: number | null }
+    >
     track?: {
         courseId?: string
         trackName?: string
-        distance?: number
+        distance?: number | string
         surface?: string
         groundCondition?: string
         weather?: string
@@ -140,6 +238,48 @@ async function main() {
 
     if (!config.uma) {
         console.error('Error: config must specify uma')
+        process.exit(1)
+    }
+
+    // Validate required fields (must be specified or explicitly set to random)
+    if (config.track.groundCondition === undefined) {
+        console.error(
+            'Error: config.track.groundCondition must be specified (use "<Random>" for random)',
+        )
+        process.exit(1)
+    }
+    if (config.track.weather === undefined) {
+        console.error(
+            'Error: config.track.weather must be specified (use "<Random>" for random)',
+        )
+        process.exit(1)
+    }
+    if (config.track.season === undefined) {
+        console.error(
+            'Error: config.track.season must be specified (use "<Random>" for random)',
+        )
+        process.exit(1)
+    }
+    if (!config.uma.strategy) {
+        console.error('Error: config.uma.strategy must be specified')
+        process.exit(1)
+    }
+    if (
+        config.uma.mood != null &&
+        (!Number.isInteger(config.uma.mood) ||
+            config.uma.mood < -2 ||
+            config.uma.mood > 2)
+    ) {
+        console.error(
+            'Error: config.uma.mood must be an integer between -2 and 2 (or omit for random)',
+        )
+        process.exit(1)
+    }
+    if (
+        config.track.numUmas !== undefined &&
+        (!Number.isInteger(config.track.numUmas) || config.track.numUmas < 1)
+    ) {
+        console.error('Error: config.track.numUmas must be an integer >= 1')
         process.exit(1)
     }
 
@@ -250,40 +390,18 @@ async function main() {
     const primaryCourseId = courses[0].courseId
 
     const umaConfig = config.uma
-    const useRandomMood = umaConfig.mood === undefined
-    const moodValue: Mood | null =
-        umaConfig.mood !== undefined ? (umaConfig.mood as Mood) : null
     const numUmas = config.track.numUmas ?? 18
+    const strategyName = parseStrategyName(umaConfig.strategy)
 
-    // Check for random season/weather/condition
-    const useRandomSeason = isRandomValue(config.track.season)
-    const useRandomWeather = isRandomValue(config.track.weather)
-    const useRandomCondition = isRandomValue(config.track.groundCondition)
-    const weightedSeasons = useRandomSeason ? createWeightedSeasonArray() : null
-    const weightedWeathers = useRandomWeather
-        ? createWeightedWeatherArray()
-        : null
-    const weightedConditions = useRandomCondition
-        ? createWeightedConditionArray()
-        : null
+    // Parse all race conditions into a unified structure
+    const conditions = parseRaceConditions(config.track, umaConfig)
 
+    // Build racedef for simulation (uses placeholder values when random, worker overrides them)
     const racedef: RaceParameters = {
-        mood: moodValue ?? 2,
-        groundCondition: useRandomCondition
-            ? GroundCondition.Good
-            : config.track.groundCondition
-              ? parseGroundCondition(config.track.groundCondition)
-              : GroundCondition.Good,
-        weather: useRandomWeather
-            ? 1
-            : config.track.weather
-              ? parseWeather(config.track.weather)
-              : 1,
-        season: useRandomSeason
-            ? Season.Spring
-            : config.track.season
-              ? parseSeason(config.track.season)
-              : Season.Spring,
+        mood: conditions.mood.value,
+        groundCondition: conditions.groundCondition.value,
+        weather: conditions.weather.value,
+        season: conditions.season.value,
         time: Time.NoTime,
         grade: Grade.G1,
         popularity: 1,
@@ -291,9 +409,6 @@ async function main() {
         orderRange: numUmas ? [1, numUmas] : undefined,
         numUmas: numUmas,
     }
-    const strategyName = umaConfig.strategy
-        ? parseStrategyName(umaConfig.strategy)
-        : 'Senkou'
 
     // Resolve skill names to IDs for uma.skills (prefer skills with cost > 0)
     const umaSkillIds: string[] = []
@@ -341,7 +456,7 @@ async function main() {
         }
     }
 
-    const baseUma = new HorseState({
+    const baseUma = createHorseState({
         speed: umaConfig.speed ?? 1200,
         stamina: umaConfig.stamina ?? 1200,
         power: umaConfig.power ?? 800,
@@ -375,39 +490,31 @@ async function main() {
     const skillIdToName: Record<string, string> = {}
     const skillNameToConfigKey: Record<string, string> = {}
 
-    // Compute current settings for skill filtering
+    // Build current settings for skill filtering (null means "any value acceptable")
     const currentSettings: CurrentSettings = {
         distanceType:
-            distanceCategory !== null
-                ? null // Distance category means multiple types
-                : useMultipleCourses
-                  ? null // Random/multiple courses
-                  : typeof distanceValue === 'number'
-                    ? getDistanceType(distanceValue)
-                    : null,
-        runningStyle: STRATEGY_TO_RUNNING_STYLE[strategyName] ?? 3,
+            distanceCategory !== null || useMultipleCourses
+                ? null
+                : typeof distanceValue === 'number'
+                  ? getDistanceType(distanceValue)
+                  : null,
+        groundCondition: conditions.groundCondition.forFiltering,
         groundType: parseSurface(config.track.surface),
-        groundCondition: useRandomCondition
-            ? null
-            : config.track.groundCondition
-              ? parseGroundCondition(config.track.groundCondition)
-              : 1, // Default to Good
-        weather: useRandomWeather
-            ? null
-            : config.track.weather
-              ? parseWeather(config.track.weather)
-              : 1, // Default to Sunny
-        season: useRandomSeason
-            ? null
-            : config.track.season
-              ? parseSeason(config.track.season)
-              : 1, // Default to Spring
+        isBasisDistance:
+            distanceCategory !== null || useMultipleCourses
+                ? null
+                : typeof distanceValue === 'number'
+                  ? distanceValue % 400 === 0
+                  : null,
+        runningStyle: STRATEGY_TO_RUNNING_STYLE[strategyName] ?? 3,
+        season: conditions.season.forFiltering,
         trackId:
             isRandomTrack || useMultipleCourses
                 ? null
                 : trackNameValue
                   ? (TRACK_NAME_TO_ID[trackNameValue] ?? null)
                   : null,
+        weather: conditions.weather.forFiltering,
     }
 
     for (const [skillName, skillConfig] of Object.entries(configSkills)) {
@@ -481,15 +588,6 @@ async function main() {
         console.error('Error: No available skills specified in config')
         process.exit(1)
     }
-    const seasonDesc = useRandomSeason
-        ? '<Random>'
-        : (config.track.season ?? 'Spring')
-    const weatherDesc = useRandomWeather
-        ? '<Random>'
-        : (config.track.weather ?? 'Sunny')
-    const conditionDesc = useRandomCondition
-        ? '<Random>'
-        : (config.track.groundCondition ?? 'Good')
 
     if (useMultipleCourses) {
         const locationDesc = isRandomTrack ? '<Random>' : trackNameValue
@@ -501,15 +599,15 @@ async function main() {
             }, ${distanceDesc}`,
         )
         console.log(
-            `Season: ${seasonDesc}, Condition: ${conditionDesc}, Weather: ${weatherDesc}`,
+            `Season: ${conditions.season.display}, Condition: ${conditions.groundCondition.display}, Weather: ${conditions.weather.display}`,
         )
     } else {
         const trackDetails = formatTrackDetails(
             primaryCourse,
             trackNames,
-            conditionDesc,
-            weatherDesc,
-            seasonDesc,
+            conditions.groundCondition.display,
+            conditions.weather.display,
+            conditions.season.display,
             primaryCourseId,
             config.track.numUmas ?? 18,
         )
@@ -594,16 +692,19 @@ async function main() {
                         skillName,
                         courses: courses.map((c) => c.course),
                         racedef,
-                        baseUma: baseUma.toJS(),
+                        baseUma: {
+                            ...baseUma,
+                            skills: Object.fromEntries(baseUma.skills),
+                        },
                         simOptions,
                         numSimulations,
-                        useRandomMood,
-                        useRandomSeason,
-                        useRandomWeather,
-                        useRandomCondition,
-                        weightedSeasons,
-                        weightedWeathers,
-                        weightedConditions,
+                        useRandomMood: conditions.mood.isRandom,
+                        useRandomSeason: conditions.season.isRandom,
+                        useRandomWeather: conditions.weather.isRandom,
+                        useRandomCondition: conditions.groundCondition.isRandom,
+                        weightedSeasons: conditions.season.weighted,
+                        weightedWeathers: conditions.weather.weighted,
+                        weightedConditions: conditions.groundCondition.weighted,
                         confidenceInterval,
                         returnRawResults,
                     },

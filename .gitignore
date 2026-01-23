@@ -10,3 +10,5 @@ tsconfig.tsbuildinfo
 .prettierrc
 biome.json
 .markdownlint.json
+configs/
+!configs/config.example.json

@@ -1,7 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import type { Mood } from '../uma-tools/uma-skill-tools/RaceParameters'
 import {
-    HorseState as HorseStateBase,
+    type HorseState,
     SkillSet,
 } from '../uma-tools/components/HorseDefTypes'
 import { runComparison } from '../uma-tools/umalator/compare'
@@ -9,23 +9,28 @@ import skillmeta from '../uma-tools/skill_meta.json'
 import type { SimulationTask, HorseStateData } from './types'
 
 /**
- * HorseState from uma-tools extends immutable.js Record.
- * TypeScript cannot properly infer types across the boundary,
- * so we cast it to a compatible interface for construction.
+ * Creates a HorseState object compatible with uma-tools runComparison.
  */
-interface HorseStateInstance {
-    set(key: string, value: unknown): HorseStateInstance
-}
-const HorseState = HorseStateBase as unknown as new (
+function createHorseState(
     props: HorseStateData & { mood?: Mood },
-) => HorseStateInstance
-
-/** Type alias for uma-tools HorseState (used for casting in function calls). */
-type UmaToolsHorseState = typeof HorseStateBase extends new (
-    ...args: unknown[]
-) => infer R
-    ? R
-    : never
+    skillIds: string[],
+): HorseState {
+    return {
+        outfitId: '',
+        speed: props.speed,
+        stamina: props.stamina,
+        power: props.power,
+        guts: props.guts,
+        wisdom: props.wisdom,
+        strategy: props.strategy as HorseState['strategy'],
+        distanceAptitude:
+            props.distanceAptitude as HorseState['distanceAptitude'],
+        surfaceAptitude: props.surfaceAptitude as HorseState['surfaceAptitude'],
+        strategyAptitude:
+            props.strategyAptitude as HorseState['strategyAptitude'],
+        skills: SkillSet(skillIds),
+    }
+}
 
 /**
  * Converts skills from HorseStateData to an array of skill IDs.
@@ -95,14 +100,14 @@ function runSkillSimulation(task: SimulationTask) {
                 groundCondition: condition,
             }
 
-            const baseUma = new HorseState({ ...task.baseUma, mood: mood }).set(
-                'skills',
-                SkillSet(baseSkillIds),
+            const baseUma = createHorseState(
+                { ...task.baseUma, mood: mood },
+                baseSkillIds,
             )
-            const umaWithSkill = new HorseState({
-                ...task.baseUma,
-                mood: mood,
-            }).set('skills', SkillSet(filteredSkillIds))
+            const umaWithSkill = createHorseState(
+                { ...task.baseUma, mood: mood },
+                filteredSkillIds,
+            )
             const singleSimOptions = { ...task.simOptions }
             if (
                 singleSimOptions.seed !== undefined &&
@@ -114,27 +119,21 @@ function runSkillSimulation(task: SimulationTask) {
                 1,
                 course,
                 racedefForSim,
-                baseUma as unknown as UmaToolsHorseState,
-                umaWithSkill as unknown as UmaToolsHorseState,
+                baseUma,
+                umaWithSkill,
                 singleSimOptions,
             )
             results.push(singleResults[0])
         }
     } else {
-        const baseUma = new HorseState(task.baseUma).set(
-            'skills',
-            SkillSet(baseSkillIds),
-        )
-        const umaWithSkill = new HorseState(task.baseUma).set(
-            'skills',
-            SkillSet(filteredSkillIds),
-        )
+        const baseUma = createHorseState(task.baseUma, baseSkillIds)
+        const umaWithSkill = createHorseState(task.baseUma, filteredSkillIds)
         const { results: batchResults } = runComparison(
             task.numSimulations,
             courses[0],
             task.racedef,
-            baseUma as unknown as UmaToolsHorseState,
-            umaWithSkill as unknown as UmaToolsHorseState,
+            baseUma,
+            umaWithSkill,
             task.simOptions,
         )
         results.push(...batchResults)

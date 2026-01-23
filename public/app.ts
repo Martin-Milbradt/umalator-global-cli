@@ -1723,7 +1723,14 @@ function renderUma(): void {
             options: aptitudeOptions,
             width: 35,
         },
-        { key: 'mood', label: 'Mood', type: 'number', width: 45, min: -2, max: 2 },
+        {
+            key: 'mood',
+            label: 'Mood',
+            type: 'number',
+            width: 45,
+            min: -2,
+            max: 2,
+        },
         { key: 'unique', label: 'Unique', type: 'text', width: 280 },
     ]
 

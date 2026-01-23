@@ -71,47 +71,60 @@ interface ParsedRaceConditions {
     mood: RaceCondition<Mood | null>
 }
 
+function parseRaceCondition<T>(
+    configValue: string | undefined,
+    isRandom: boolean,
+    randomPlaceholder: T,
+    parse: (v: string) => T,
+    createWeighted: (() => number[]) | null,
+): RaceCondition<T> {
+    if (isRandom) {
+        return {
+            isRandom: true,
+            value: randomPlaceholder,
+            forFiltering: null,
+            display: '<Random>',
+            weighted: createWeighted?.() ?? null,
+        }
+    }
+    const value = parse(configValue as string)
+    return {
+        isRandom: false,
+        value,
+        forFiltering: value,
+        display: configValue as string,
+        weighted: null,
+    }
+}
+
 function parseRaceConditions(
     trackConfig: NonNullable<Config['track']>,
     umaConfig: NonNullable<Config['uma']>,
 ): ParsedRaceConditions {
-    const seasonRandom = isRandomValue(trackConfig.season)
-    const weatherRandom = isRandomValue(trackConfig.weather)
-    const conditionRandom = isRandomValue(trackConfig.groundCondition)
     const moodRandom = umaConfig.mood == null
 
     return {
-        season: {
-            isRandom: seasonRandom,
-            value: seasonRandom
-                ? Season.Spring
-                : parseSeason(trackConfig.season!),
-            forFiltering: seasonRandom
-                ? null
-                : parseSeason(trackConfig.season!),
-            display: seasonRandom ? '<Random>' : trackConfig.season!,
-            weighted: seasonRandom ? createWeightedSeasonArray() : null,
-        },
-        weather: {
-            isRandom: weatherRandom,
-            value: weatherRandom ? 1 : parseWeather(trackConfig.weather!),
-            forFiltering: weatherRandom
-                ? null
-                : parseWeather(trackConfig.weather!),
-            display: weatherRandom ? '<Random>' : trackConfig.weather!,
-            weighted: weatherRandom ? createWeightedWeatherArray() : null,
-        },
-        groundCondition: {
-            isRandom: conditionRandom,
-            value: conditionRandom
-                ? GroundCondition.Good
-                : parseGroundCondition(trackConfig.groundCondition!),
-            forFiltering: conditionRandom
-                ? null
-                : parseGroundCondition(trackConfig.groundCondition!),
-            display: conditionRandom ? '<Random>' : trackConfig.groundCondition!,
-            weighted: conditionRandom ? createWeightedConditionArray() : null,
-        },
+        season: parseRaceCondition(
+            trackConfig.season,
+            isRandomValue(trackConfig.season),
+            Season.Spring,
+            parseSeason,
+            createWeightedSeasonArray,
+        ),
+        weather: parseRaceCondition(
+            trackConfig.weather,
+            isRandomValue(trackConfig.weather),
+            1,
+            parseWeather,
+            createWeightedWeatherArray,
+        ),
+        groundCondition: parseRaceCondition(
+            trackConfig.groundCondition,
+            isRandomValue(trackConfig.groundCondition),
+            GroundCondition.Good,
+            parseGroundCondition,
+            createWeightedConditionArray,
+        ),
         mood: {
             isRandom: moodRandom,
             value: moodRandom ? null : (umaConfig.mood as Mood),
@@ -266,9 +279,7 @@ async function main() {
         config.track.numUmas !== undefined &&
         (!Number.isInteger(config.track.numUmas) || config.track.numUmas < 1)
     ) {
-        console.error(
-            'Error: config.track.numUmas must be an integer >= 1',
-        )
+        console.error('Error: config.track.numUmas must be an integer >= 1')
         process.exit(1)
     }
 

@@ -2197,7 +2197,6 @@ describe('is_basis_distance filtering', () => {
             groundType: 1,
             isBasisDistance: true,
             orientation: null,
-            orientation: null,
             runningStyle: 3,
             season: 1,
             trackId: 10006,

@@ -132,7 +132,7 @@ const buildOptions: esbuild.BuildOptions = {
     target: 'node20',
     format: 'esm',
     outfile: 'cli.js',
-    define: { CC_GLOBAL: 'false' },
+    define: { CC_GLOBAL: 'true' },
     external: [...nodeBuiltins],
     mainFields: ['module', 'main'],
     banner: {
@@ -148,7 +148,7 @@ const workerBuildOptions: esbuild.BuildOptions = {
     target: 'node25',
     format: 'esm',
     outfile: 'simulation.worker.js',
-    define: { CC_GLOBAL: 'false' },
+    define: { CC_GLOBAL: 'true' },
     external: [...nodeBuiltins],
     mainFields: ['module', 'main'],
     banner: {

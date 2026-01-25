@@ -3,23 +3,20 @@ import { cpus } from 'node:os'
 import { resolve } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { Command } from 'commander'
+import { SkillSet } from '../uma-tools/components/HorseDefTypes'
+import type { RaceParameters } from '../uma-tools/uma-skill-tools/RaceParameters'
 import {
-    type HorseState,
-    SkillSet,
-} from '../uma-tools/components/HorseDefTypes'
-import type {
-    Mood,
-    RaceParameters,
-} from '../uma-tools/uma-skill-tools/RaceParameters'
+    createHorseState,
+    parseRaceConditions,
+    processWithConcurrency,
+} from './simulation-runner'
 import type { RawCourseData, SkillMeta } from './types'
 import {
     type CourseData,
     type CurrentSettings,
     calculateSkillCost,
+    calculateStatsFromRawResults,
     canSkillTrigger,
-    createWeightedConditionArray,
-    createWeightedSeasonArray,
-    createWeightedWeatherArray,
     extractSkillRestrictions,
     findMatchingCoursesWithFilters,
     findSkillIdByNameWithPreference,
@@ -31,18 +28,13 @@ import {
     formatTrackDetails,
     formatTurn,
     Grade,
-    GroundCondition,
     getDistanceType,
     isRandomLocation,
     isRandomValue,
     parseDistanceCategory,
-    parseGroundCondition,
-    parseSeason,
     parseStrategyName,
     parseSurface,
-    parseWeather,
     processCourseData,
-    Season,
     type SkillCostContext,
     type SkillDataEntry,
     type SkillResult,
@@ -50,120 +42,6 @@ import {
     Time,
     TRACK_NAME_TO_ID,
 } from './utils'
-
-/**
- * Parsed race condition that can be either a fixed value or random.
- * When random, `value` is a placeholder for racedef (worker overrides it),
- * and `forFiltering` is null (skill filtering accepts any value).
- */
-interface RaceCondition<T> {
-    isRandom: boolean
-    value: T // Used in racedef (placeholder when random)
-    forFiltering: T | null // Used in currentSettings (null when random)
-    display: string // For console output
-    weighted: number[] | null // Weighted array for random sampling, null if not random
-}
-
-interface ParsedRaceConditions {
-    season: RaceCondition<number>
-    weather: RaceCondition<number>
-    groundCondition: RaceCondition<number>
-    mood: RaceCondition<Mood | null>
-}
-
-function parseRaceCondition<T>(
-    configValue: string | undefined,
-    isRandom: boolean,
-    randomPlaceholder: T,
-    parse: (v: string) => T,
-    createWeighted: (() => number[]) | null,
-): RaceCondition<T> {
-    if (isRandom) {
-        return {
-            isRandom: true,
-            value: randomPlaceholder,
-            forFiltering: null,
-            display: '<Random>',
-            weighted: createWeighted?.() ?? null,
-        }
-    }
-    const value = parse(configValue as string)
-    return {
-        isRandom: false,
-        value,
-        forFiltering: value,
-        display: configValue as string,
-        weighted: null,
-    }
-}
-
-function parseRaceConditions(
-    trackConfig: NonNullable<Config['track']>,
-    umaConfig: NonNullable<Config['uma']>,
-): ParsedRaceConditions {
-    const moodRandom = umaConfig.mood == null
-
-    return {
-        season: parseRaceCondition(
-            trackConfig.season,
-            isRandomValue(trackConfig.season),
-            Season.Spring,
-            parseSeason,
-            createWeightedSeasonArray,
-        ),
-        weather: parseRaceCondition(
-            trackConfig.weather,
-            isRandomValue(trackConfig.weather),
-            1,
-            parseWeather,
-            createWeightedWeatherArray,
-        ),
-        groundCondition: parseRaceCondition(
-            trackConfig.groundCondition,
-            isRandomValue(trackConfig.groundCondition),
-            GroundCondition.Good,
-            parseGroundCondition,
-            createWeightedConditionArray,
-        ),
-        mood: {
-            isRandom: moodRandom,
-            value: moodRandom ? null : (umaConfig.mood as Mood),
-            forFiltering: moodRandom ? null : (umaConfig.mood as Mood),
-            display: moodRandom ? '<Random>' : String(umaConfig.mood),
-            weighted: null, // Mood uses a fixed array [-2, -1, 0, 1, 2] in worker
-        },
-    }
-}
-
-/** Creates a HorseState object for simulation */
-function createHorseState(props: {
-    speed: number
-    stamina: number
-    power: number
-    guts: number
-    wisdom: number
-    strategy: string
-    distanceAptitude: string
-    surfaceAptitude: string
-    strategyAptitude: string
-    skills: Map<string, string>
-}): HorseState {
-    return {
-        outfitId: '',
-        speed: props.speed,
-        stamina: props.stamina,
-        power: props.power,
-        guts: props.guts,
-        wisdom: props.wisdom,
-        strategy: props.strategy as HorseState['strategy'],
-        distanceAptitude:
-            props.distanceAptitude as HorseState['distanceAptitude'],
-        surfaceAptitude: props.surfaceAptitude as HorseState['surfaceAptitude'],
-        strategyAptitude:
-            props.strategyAptitude as HorseState['strategyAptitude'],
-        skills: props.skills as HorseState['skills'],
-    }
-}
 
 interface Config {
     skills?: Record<
@@ -394,7 +272,33 @@ async function main() {
     const strategyName = parseStrategyName(umaConfig.strategy)
 
     // Parse all race conditions into a unified structure
-    const conditions = parseRaceConditions(config.track, umaConfig)
+    // Type assertion is safe because we validated these fields above
+    const conditions = parseRaceConditions(
+        config.track as {
+            courseId?: string
+            trackName?: string
+            distance?: number | string
+            surface?: string
+            groundCondition: string
+            weather: string
+            season: string
+            numUmas?: number
+        },
+        umaConfig as {
+            speed?: number
+            stamina?: number
+            power?: number
+            guts?: number
+            wisdom?: number
+            strategy: string
+            distanceAptitude?: string
+            surfaceAptitude?: string
+            styleAptitude?: string
+            mood?: number
+            skills?: string[]
+            unique?: string
+        },
+    )
 
     // Build racedef for simulation (uses placeholder values when random, worker overrides them)
     const racedef: RaceParameters = {
@@ -631,45 +535,6 @@ async function main() {
         discount: number
     }
 
-    function calculateStatsFromRawResults(
-        rawResults: number[],
-        cost: number,
-        discount: number,
-        skillName: string,
-        ciPercent: number,
-    ): SkillResult {
-        const sorted = [...rawResults].sort((a, b) => a - b)
-        const mean = sorted.reduce((a, b) => a + b, 0) / sorted.length
-        const min = sorted[0]
-        const max = sorted[sorted.length - 1]
-        const mid = Math.floor(sorted.length / 2)
-        const median =
-            sorted.length % 2 === 0
-                ? (sorted[mid - 1] + sorted[mid]) / 2
-                : sorted[mid]
-        const lowerPercentile = (100 - ciPercent) / 2
-        const upperPercentile = 100 - lowerPercentile
-        const lower_Index = Math.floor(sorted.length * (lowerPercentile / 100))
-        const upper_Index = Math.floor(sorted.length * (upperPercentile / 100))
-        const ciLower = sorted[lower_Index]
-        const ciUpper = sorted[upper_Index]
-        const meanLengthPerCost = mean / cost
-
-        return {
-            skill: skillName,
-            cost,
-            discount,
-            numSimulations: rawResults.length,
-            meanLength: mean,
-            medianLength: median,
-            meanLengthPerCost,
-            minLength: min,
-            maxLength: max,
-            ciLower,
-            ciUpper,
-        }
-    }
-
     const concurrency = Math.min(availableSkillNames.length, cpus().length)
 
     const runSimulationInWorker = (
@@ -732,29 +597,6 @@ async function main() {
                 worker.terminate()
             })
         })
-    }
-
-    const processWithConcurrency = async <T>(
-        items: (() => Promise<T>)[],
-        limit: number,
-    ): Promise<T[]> => {
-        const results: T[] = []
-        const executing = new Set<Promise<void>>()
-
-        for (const itemFactory of items) {
-            const promise = itemFactory().then((result) => {
-                results.push(result)
-                executing.delete(promise)
-            })
-            executing.add(promise)
-
-            if (executing.size >= limit) {
-                await Promise.race(executing)
-            }
-        }
-
-        await Promise.all(executing)
-        return results
     }
 
     const skillRawResultsMap: Map<string, SkillRawResults> = new Map()

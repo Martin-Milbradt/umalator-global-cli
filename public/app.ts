@@ -2415,72 +2415,6 @@ function addSkillToUmaFromTable(skillName: string, cost: number): void {
     }
 }
 
-// Parse a range string like "5.20-25.40" or "-0.87-0.50" or "-1.20--0.50"
-function parseRangeString(rangeStr: string): [number, number] {
-    // Handle formats: "a-b", "-a-b", "a--b", "-a--b"
-    // Strategy: find the dash that separates min from max (not a leading negative sign)
-    const str = rangeStr.trim()
-
-    // If starts with '-', the first number is negative
-    // Find the separator dash (not the one after a digit or start)
-    let separatorIndex = -1
-    for (let i = 1; i < str.length; i++) {
-        if (str[i] === '-' && str[i - 1] !== 'e' && str[i - 1] !== 'E') {
-            // Check if this is a separator or part of a number
-            // It's a separator if the previous char is a digit or '.'
-            if (/[\d.]/.test(str[i - 1])) {
-                separatorIndex = i
-                break
-            }
-        }
-    }
-
-    if (separatorIndex === -1) {
-        // No separator found, return same value for both
-        const val = parseFloat(str) || 0
-        return [val, val]
-    }
-
-    const first = parseFloat(str.slice(0, separatorIndex)) || 0
-    const second = parseFloat(str.slice(separatorIndex + 1)) || 0
-    return [first, second]
-}
-
-// Parse skill result from CLI output line
-function parseSkillResultLine(line: string): SkillResult | null {
-    // Parse lines like: "Skill Name  180  20%  500  12.34  11.89  0.069  5.20-25.40  8.50-16.20"
-    // This is a simplified parser - the actual format from formatTable has variable spacing
-    const parts = line.trim().split(/\s{2,}/)
-    if (parts.length < 9) return null
-
-    const skill = parts[0]
-    const cost = parseInt(parts[1], 10)
-    const discountStr = parts[2]
-    const discount = discountStr === '-' ? 0 : parseInt(discountStr, 10)
-    const numSimulations = parseInt(parts[3], 10)
-    const meanLength = parseFloat(parts[4])
-    const medianLength = parseFloat(parts[5])
-    const meanLengthPerCost = parseFloat(parts[6]) / 1000 // Convert back from x1000 format
-    const [minLength, maxLength] = parseRangeString(parts[7])
-    const [ciLower, ciUpper] = parseRangeString(parts[8])
-
-    if (isNaN(cost) || isNaN(meanLength)) return null
-
-    return {
-        skill,
-        cost,
-        discount,
-        numSimulations,
-        meanLength,
-        medianLength,
-        meanLengthPerCost,
-        minLength,
-        maxLength,
-        ciLower,
-        ciUpper,
-    }
-}
-
 async function saveConfig(): Promise<void> {
     if (!currentConfigFile || !currentConfig) return
 
@@ -2530,12 +2464,9 @@ async function runCalculations(clearExisting = true): Promise<void> {
     }
     await saveConfig()
 
-    let fullOutput = ''
-    let tableStarted = false
-
     try {
         const response = await fetch(
-            `/api/run?configFile=${encodeURIComponent(currentConfigFile)}`,
+            `/api/simulate?configFile=${encodeURIComponent(currentConfigFile)}`,
             {
                 method: 'GET',
             },
@@ -2578,89 +2509,48 @@ async function runCalculations(clearExisting = true): Promise<void> {
                     try {
                         const data = JSON.parse(line.slice(6)) as {
                             type: string
-                            data?: string
-                            code?: number | null
-                            signal?: string
-                            output?: string
+                            phase?: string
+                            result?: SkillResult
+                            results?: SkillResult[]
                             error?: string
+                            info?: string
                         }
                         if (data.type === 'started') {
                             // Calculation started
-                        } else if (data.type === 'output') {
-                            fullOutput += data.data || ''
-                            // Try to parse results as they come in
-                            const outputLines = (data.data || '').split('\n')
-                            for (const outputLine of outputLines) {
-                                // Check if we're in the results table section
-                                if (outputLine.includes('Skill') && outputLine.includes('Cost') && outputLine.includes('Mean')) {
-                                    tableStarted = true
-                                    continue
-                                }
-                                if (outputLine.startsWith('---')) {
-                                    continue
-                                }
-                                if (tableStarted && outputLine.trim()) {
-                                    const parsed = parseSkillResultLine(outputLine)
-                                    if (parsed) {
-                                        // Cache the result for later reuse
-                                        calculatedResultsCache.set(parsed.skill, parsed)
-                                        resultsMap.set(parsed.skill, {
-                                            ...parsed,
-                                            status: 'fresh',
-                                        })
-                                        renderResultsTable()
-                                    }
-                                }
+                        } else if (data.type === 'phase') {
+                            // Phase update - could show in UI if desired
+                            if (countEl && data.phase) {
+                                countEl.textContent = data.phase
                             }
-                        } else if (data.type === 'warning') {
-                            const warningText = (data.data || '').trim()
-                            if (warningText) {
-                                const warnLines = warningText
-                                    .split('\n')
-                                    .filter((l) => l.trim())
-                                for (const warnLine of warnLines) {
-                                    showToast({
-                                        type: 'warning',
-                                        message: warnLine.trim(),
-                                    })
-                                }
+                        } else if (data.type === 'info') {
+                            // Info message
+                            if (data.info) {
+                                showToast({ type: 'info', message: data.info })
                             }
-                        } else if (data.type === 'done') {
+                        } else if (data.type === 'result' && data.result) {
+                            // Individual skill result - add to map
+                            calculatedResultsCache.set(data.result.skill, data.result)
+                            resultsMap.set(data.result.skill, {
+                                ...data.result,
+                                status: 'fresh',
+                            })
+                            renderResultsTable()
+                        } else if (data.type === 'complete') {
                             button.disabled = false
                             lastCalculationTime = new Date()
 
-                            // Parse final output if we haven't captured results yet
-                            if (resultsMap.size === 0 && data.output) {
-                                parseFullOutput(data.output)
-                            }
-
-                            renderResultsTable()
-
-                            if (
-                                data.code !== null &&
-                                data.code !== undefined &&
-                                data.code !== 0
-                            ) {
-                                showToast({
-                                    type: 'error',
-                                    message: `Process exited with code ${data.code}`,
-                                })
-                            } else if (data.code === null) {
-                                if (data.signal) {
-                                    showToast({
-                                        type: 'warning',
-                                        message: `Process terminated by signal: ${data.signal}`,
-                                    })
-                                } else if (
-                                    !data.output ||
-                                    data.output.trim().length === 0
-                                ) {
-                                    showToast({
-                                        type: 'error',
-                                        message: "Process exited without output. Run 'npm run build' first.",
+                            // Update with final sorted results
+                            if (data.results) {
+                                for (const result of data.results) {
+                                    calculatedResultsCache.set(result.skill, result)
+                                    resultsMap.set(result.skill, {
+                                        ...result,
+                                        status: 'fresh',
                                     })
                                 }
                             }
+
+                            renderResultsTable()
                         } else if (data.type === 'error') {
                             button.disabled = false
                             showToast({
@@ -2678,32 +2568,6 @@ async function runCalculations(clearExisting = true): Promise<void> {
         const err = error as Error
         button.disabled = false
         showToast({ type: 'error', message: `Error: ${err.message}` })
-    }
-}
-
-function parseFullOutput(output: string): void {
-    const lines = output.split('\n')
-    let inTable = false
-
-    for (const line of lines) {
-        if (line.includes('Skill') && line.includes('Cost') && line.includes('Mean')) {
-            inTable = true
-            continue
-        }
-        if (line.startsWith('---')) {
-            continue
-        }
-        if (inTable && line.trim()) {
-            const parsed = parseSkillResultLine(line)
-            if (parsed) {
-                // Cache the result for later reuse
-                calculatedResultsCache.set(parsed.skill, parsed)
-                resultsMap.set(parsed.skill, {
-                    ...parsed,
-                    status: 'fresh',
-                })
-            }
-        }
     }
 }
 
@@ -2801,7 +2665,7 @@ if (duplicateButton) {
 
 const runButton = document.getElementById('run-button')
 if (runButton) {
-    runButton.addEventListener('click', runCalculations)
+    runButton.addEventListener('click', () => runCalculations())
 }
 
 const resetButton = document.getElementById('reset-button')

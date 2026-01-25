@@ -17,6 +17,7 @@ import {
     normalizeConfigSkillNames,
     type SkillResult,
 } from './utils'
+import { SimulationRunner, type SimulationRunnerConfig } from './simulation-runner'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -38,6 +39,7 @@ let cachedSkillnames: Record<string, string[]> | null = null
 let cachedSkillmeta: Record<string, SkillMeta> | null = null
 let cachedCourseData: Record<string, RawCourseData> | null = null
 let cachedSkillData: Record<string, SkillDataEntry> | null = null
+let cachedTracknames: Record<string, string[]> | null = null
 
 // Case-insensitive skill name lookup map (built once after skillnames loads)
 let skillNameLookup: Map<string, string> | null = null
@@ -59,6 +61,9 @@ function loadStaticData(): void {
         )
         cachedSkillData = JSON.parse(
             readFileSync(join(umaToolsDir, 'skill_data.json'), 'utf-8'),
+        )
+        cachedTracknames = JSON.parse(
+            readFileSync(join(umaToolsDir, 'tracknames.json'), 'utf-8'),
         )
         skillNameLookup = buildSkillNameLookup(cachedSkillnames)
     } catch (error) {
@@ -498,6 +503,104 @@ app.get('/api/run', (req, res) => {
             child.kill('SIGTERM')
         }
     })
+})
+
+app.get('/api/simulate', async (req, res) => {
+    const configFile = req.query.configFile as string | undefined
+
+    if (!configFile) {
+        res.status(400).json({ error: 'configFile parameter required' })
+        return
+    }
+
+    // Check required static data is loaded
+    if (!cachedSkillmeta || !cachedSkillnames || !cachedSkillData || !cachedCourseData || !cachedTracknames) {
+        res.status(500).json({ error: 'Static data not loaded' })
+        return
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.setHeader('X-Accel-Buffering', 'no')
+
+    let requestClosed = false
+
+    const keepAlive = setInterval(() => {
+        if (!requestClosed) {
+            try {
+                res.write(`: keepalive\n\n`)
+            } catch {
+                requestClosed = true
+                clearInterval(keepAlive)
+            }
+        } else {
+            clearInterval(keepAlive)
+        }
+    }, 30000)
+
+    req.on('close', () => {
+        requestClosed = true
+        clearInterval(keepAlive)
+    })
+
+    req.on('aborted', () => {
+        requestClosed = true
+        clearInterval(keepAlive)
+    })
+
+    try {
+        // Load config file
+        const configPath = join(configDir, configFile)
+        if (!existsSync(configPath)) {
+            res.write(`data: ${JSON.stringify({ type: 'error', error: `Config file not found: ${configFile}` })}\n\n`)
+            res.end()
+            return
+        }
+
+        const configContent = readFileSync(configPath, 'utf-8')
+        const config = JSON.parse(configContent) as SimulationRunnerConfig
+
+        res.write(`data: ${JSON.stringify({ type: 'started' })}\n\n`)
+        if (res.flushHeaders) {
+            res.flushHeaders()
+        }
+
+        const workerPath = new URL('./simulation.worker.js', import.meta.url)
+        const runner = new SimulationRunner(config, {
+            skillMeta: cachedSkillmeta,
+            skillNames: cachedSkillnames,
+            skillData: cachedSkillData,
+            courseData: cachedCourseData,
+            trackNames: cachedTracknames,
+        }, workerPath)
+
+        await runner.run((progress) => {
+            if (requestClosed) return
+            try {
+                res.write(`data: ${JSON.stringify(progress)}\n\n`)
+            } catch {
+                requestClosed = true
+            }
+        })
+
+        if (!requestClosed) {
+            res.end()
+        }
+    } catch (error) {
+        const err = error as Error
+        console.error('Simulation error:', err)
+        if (!requestClosed) {
+            try {
+                res.write(`data: ${JSON.stringify({ type: 'error', error: err.message })}\n\n`)
+                res.end()
+            } catch {
+                // Ignore write errors
+            }
+        }
+    } finally {
+        clearInterval(keepAlive)
+    }
 })
 
 app.listen(PORT, () => {

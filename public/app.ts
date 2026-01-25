@@ -942,7 +942,13 @@ async function loadConfigFiles(): Promise<void> {
     await waitForCourseData()
     if (files.length > 0) {
         // Check if there's a saved config in localStorage
-        const lastUsedConfig = localStorage.getItem(LAST_USED_CONFIG_KEY)
+        let lastUsedConfig: string | null = null
+        try {
+            lastUsedConfig = localStorage.getItem(LAST_USED_CONFIG_KEY)
+        } catch (e) {
+            // localStorage might be unavailable (private browsing, disabled, etc.)
+            console.warn('Failed to read from localStorage:', e)
+        }
         // If the saved config exists in the list, load it; otherwise load the first one
         const configToLoad =
             lastUsedConfig && files.includes(lastUsedConfig)
@@ -963,7 +969,12 @@ async function loadConfig(filename: string): Promise<void> {
     }
 
     // Save the last used config to localStorage
-    localStorage.setItem(LAST_USED_CONFIG_KEY, filename)
+    try {
+        localStorage.setItem(LAST_USED_CONFIG_KEY, filename)
+    } catch (e) {
+        // localStorage might be unavailable (private browsing, quota exceeded, etc.)
+        console.warn('Failed to save to localStorage:', e)
+    }
 
     renderSkills()
     renderTrack()

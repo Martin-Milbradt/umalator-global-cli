@@ -88,6 +88,9 @@ interface CurrentSettings {
     weather: number | null
 }
 
+// localStorage key for persisting last used config
+const LAST_USED_CONFIG_KEY = 'lastUsedConfig'
+
 // Mapping constants for skill trigger checking
 // NOTE: Keep in sync with utils.ts STRATEGY_TO_RUNNING_STYLE
 // Running style values verified from skill_data.json:
@@ -939,7 +942,7 @@ async function loadConfigFiles(): Promise<void> {
     await waitForCourseData()
     if (files.length > 0) {
         // Check if there's a saved config in localStorage
-        const lastUsedConfig = localStorage.getItem('lastUsedConfig')
+        const lastUsedConfig = localStorage.getItem(LAST_USED_CONFIG_KEY)
         // If the saved config exists in the list, load it; otherwise load the first one
         const configToLoad =
             lastUsedConfig && files.includes(lastUsedConfig)
@@ -960,7 +963,7 @@ async function loadConfig(filename: string): Promise<void> {
     }
 
     // Save the last used config to localStorage
-    localStorage.setItem('lastUsedConfig', filename)
+    localStorage.setItem(LAST_USED_CONFIG_KEY, filename)
 
     renderSkills()
     renderTrack()

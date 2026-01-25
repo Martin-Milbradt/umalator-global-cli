@@ -938,7 +938,14 @@ async function loadConfigFiles(): Promise<void> {
     })
     await waitForCourseData()
     if (files.length > 0) {
-        await loadConfig(files[0])
+        // Check if there's a saved config in localStorage
+        const lastUsedConfig = localStorage.getItem('lastUsedConfig')
+        // If the saved config exists in the list, load it; otherwise load the first one
+        const configToLoad =
+            lastUsedConfig && files.includes(lastUsedConfig)
+                ? lastUsedConfig
+                : files[0]
+        await loadConfig(configToLoad)
     }
 }
 
@@ -951,6 +958,9 @@ async function loadConfig(filename: string): Promise<void> {
     if (select) {
         select.value = filename
     }
+
+    // Save the last used config to localStorage
+    localStorage.setItem('lastUsedConfig', filename)
 
     renderSkills()
     renderTrack()

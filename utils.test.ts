@@ -749,6 +749,94 @@ describe('calculateSkillCost', () => {
         )
         expect(result).toBe(200)
     })
+
+    it('calculates cost for Professor of Curvature with multi-skill discounts', () => {
+        // Professor of Curvature is a multi-skill that includes Corner Adept ○
+        // Professor of Curvature: 10% discount, Corner Adept ○: 10% discount
+        // Expected cost: 306
+        // Calculation: ceil(170 * 0.9) + round(170 * 0.9) = 153 + 153 = 306
+        const skillMeta: Record<
+            string,
+            { baseCost: number; groupId?: string; order?: number }
+        > = {
+            professorOfCurvature: { baseCost: 170, groupId: 'corner', order: 1 },
+            cornerAdeptNormal: { baseCost: 170, groupId: 'corner', order: 2 },
+        }
+        const skillNames: Record<string, string[]> = {
+            professorOfCurvature: ['Professor of Curvature'],
+            cornerAdeptNormal: ['Corner Adept ○'],
+        }
+        const skillIdToName: Record<string, string> = {
+            professorOfCurvature: 'Professor of Curvature',
+            cornerAdeptNormal: 'Corner Adept ○',
+        }
+        const skillNameToConfigKey: Record<string, string> = {
+            'Professor of Curvature': 'Professor of Curvature',
+            'Corner Adept ○': 'Corner Adept ○',
+        }
+        const configSkills: Record<string, { discount?: number | null }> = {
+            'Professor of Curvature': { discount: 10 },
+            'Corner Adept ○': { discount: 10 },
+        }
+        const context = {
+            skillMeta,
+            skillNames,
+            skillIdToName,
+            skillNameToConfigKey,
+            configSkills,
+            baseUmaSkillIds: [],
+        }
+        const result = calculateSkillCost(
+            'professorOfCurvature',
+            { discount: 10 },
+            context,
+        )
+        expect(result).toBe(306)
+    })
+
+    it('calculates cost for Right-Handed ◎ with prerequisite skill owned', () => {
+        // When uma already has Right-Handed ○, upgrading to Right-Handed ◎
+        // Right-Handed ○: baseCost 100, Right-Handed ◎: baseCost 110
+        // Expected cost: 110 (only the upgrade cost, not the already-owned skill)
+        // Calculation: ceil(110 * 1.0) = 110, Right-Handed ○ is skipped because it's owned
+        const skillMeta: Record<
+            string,
+            { baseCost: number; groupId?: string; order?: number }
+        > = {
+            rightHandedNormal: { baseCost: 100, groupId: 'rightHanded', order: 1 },
+            rightHandedRare: { baseCost: 110, groupId: 'rightHanded', order: 2 },
+        }
+        const skillNames: Record<string, string[]> = {
+            rightHandedNormal: ['Right-Handed ○'],
+            rightHandedRare: ['Right-Handed ◎'],
+        }
+        const skillIdToName: Record<string, string> = {
+            rightHandedNormal: 'Right-Handed ○',
+            rightHandedRare: 'Right-Handed ◎',
+        }
+        const skillNameToConfigKey: Record<string, string> = {
+            'Right-Handed ○': 'Right-Handed ○',
+            'Right-Handed ◎': 'Right-Handed ◎',
+        }
+        const configSkills: Record<string, { discount?: number | null }> = {
+            'Right-Handed ○': { discount: 0 },
+            'Right-Handed ◎': { discount: 0 },
+        }
+        const context = {
+            skillMeta,
+            skillNames,
+            skillIdToName,
+            skillNameToConfigKey,
+            configSkills,
+            baseUmaSkillIds: ['rightHandedNormal'], // Uma already owns Right-Handed ○
+        }
+        const result = calculateSkillCost(
+            'rightHandedRare',
+            { discount: 0 },
+            context,
+        )
+        expect(result).toBe(110)
+    })
 })
 
 describe('formatTable', () => {

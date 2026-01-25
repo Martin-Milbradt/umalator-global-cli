@@ -65,6 +65,7 @@ npx vitest run utils.test.ts
 - **Skill Resolution**: Skills referenced by global English names; cost > 0 for regular skills, cost 0 for unique skills. Handles ○/◎ variants automatically.
 - **Auto-save**: Web UI automatically persists config changes to disk (500ms debounce)
 - **SSE Streaming**: Web UI receives simulation output via Server-Sent Events at `/api/simulate`
+- **Per-Combination Batching**: When random conditions (mood, weather, etc.) are enabled, simulations are batched per unique combination to preserve internal variance from `runComparison`
 
 ## Implementation Guidance
 
@@ -72,4 +73,17 @@ When fixing an issue or writing a new feature that doesn't have any tests yet, i
 
 ### Testing
 
-Tests in `utils.test.ts` cover pure functions from `utils.ts`.
+- `utils.test.ts` - Unit tests for pure functions from `utils.ts`
+- `simulation-runner.test.ts` - Integration tests for worker thread simulations
+
+Run a single test file: `npx vitest run <filename>`
+
+### Simulation Variance
+
+The `runComparison` function from uma-tools generates variance through:
+
+1. **Skill trigger position sampling** - Pre-generates N different trigger positions
+2. **RNG state advancement** - Each simulation advances internal RNG
+3. **Wisdom checks** - Random activation probability
+
+When calling `runComparison`, always use `nsamples > 1` to preserve internal variance. Calling with `nsamples=1` eliminates variance from trigger sampling and RNG.

@@ -1,51 +1,51 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
     DistanceType,
-    Surface,
     Orientation,
+    Surface,
     type ThresholdStat,
 } from '../uma-tools/uma-skill-tools/CourseData'
 import {
-    Grade,
-    GroundCondition,
-    Season,
-    Time,
-    parseGroundCondition,
-    parseWeather,
-    parseSeason,
-    parseStrategyName,
-    formatStrategyName,
-    formatDistanceType,
-    formatSurface,
-    formatTurn,
-    parseSurface,
-    parseDistanceCategory,
-    isRandomLocation,
-    isRandomValue,
-    shuffleArray,
+    buildSkillNameLookup,
+    type CurrentSettings,
+    calculateSkillCost,
+    calculateStatsFromRawResults,
+    canSkillTrigger,
+    createWeightedConditionArray,
     createWeightedSeasonArray,
     createWeightedWeatherArray,
-    createWeightedConditionArray,
+    extractSkillRestrictions,
+    extractStaticRestrictions,
     findAllSkillIdsByName,
     findSkillIdByNameWithPreference,
     findSkillVariantsByName,
-    processCourseData,
-    calculateStatsFromRawResults,
-    calculateSkillCost,
+    formatDistanceType,
+    formatStrategyName,
+    formatSurface,
     formatTable,
-    buildSkillNameLookup,
+    formatTurn,
+    Grade,
+    GroundCondition,
     getCanonicalSkillName,
-    normalizeConfigSkillNames,
     getDistanceType,
-    extractStaticRestrictions,
-    canSkillTrigger,
-    extractSkillRestrictions,
-    STRATEGY_TO_RUNNING_STYLE,
-    TRACK_NAME_TO_ID,
-    type SkillResult,
-    type SkillRestrictions,
-    type CurrentSettings,
+    isRandomLocation,
+    isRandomValue,
+    normalizeConfigSkillNames,
+    parseDistanceCategory,
+    parseGroundCondition,
+    parseSeason,
+    parseStrategyName,
+    parseSurface,
+    parseWeather,
+    processCourseData,
+    Season,
     type SkillDataEntry,
+    type SkillRestrictions,
+    type SkillResult,
+    STRATEGY_TO_RUNNING_STYLE,
+    shuffleArray,
+    Time,
+    TRACK_NAME_TO_ID,
 } from './utils'
 
 // Tests to ensure local enum values match upstream uma-tools/uma-skill-tools/RaceParameters.ts
@@ -838,9 +838,29 @@ describe('calculateSkillCost', () => {
         expect(result).toBe(180)
     })
 
-    it('rounds up after discount', () => {
+    it('rounds after discount (exact result)', () => {
+        // 200 * 0.85 = 170 (no rounding needed)
         const result = calculateSkillCost('skill001', { discount: 15 }, context)
         expect(result).toBe(170)
+    })
+
+    it('rounds to nearest integer after discount', () => {
+        // 150 * 0.93 = 139.5 → round to 140 (not ceil to 140)
+        // 150 * 0.97 = 145.5 → round to 146
+        const skillMeta2 = { skill: { baseCost: 150 } }
+        const result1 = calculateSkillCost(
+            'skill',
+            { discount: 7 },
+            { skillMeta: skillMeta2 },
+        )
+        expect(result1).toBe(140) // round(139.5) = 140
+
+        const result2 = calculateSkillCost(
+            'skill',
+            { discount: 3 },
+            { skillMeta: skillMeta2 },
+        )
+        expect(result2).toBe(146) // round(145.5) = 146
     })
 
     it('uses default cost of 200 for unknown skill', () => {
@@ -855,6 +875,109 @@ describe('calculateSkillCost', () => {
             context,
         )
         expect(result).toBe(200)
+    })
+
+    it('calculates cost for Professor of Curvature with multi-skill discounts', () => {
+        // Professor of Curvature is a multi-skill that includes Corner Adept ○
+        // Professor of Curvature: baseCost 170, 10% discount
+        // Corner Adept ○: baseCost 170, 20% discount (higher order = prerequisite)
+        // Expected cost: 289
+        // Calculation: round(170 * 0.8) + round(170 * 0.9) = 136 + 153 = 289
+        const skillMeta: Record<
+            string,
+            { baseCost: number; groupId?: string; order?: number }
+        > = {
+            professorOfCurvature: {
+                baseCost: 170,
+                groupId: 'corner',
+                order: 1,
+            },
+            cornerAdeptNormal: { baseCost: 170, groupId: 'corner', order: 2 },
+        }
+        const skillNames: Record<string, string[]> = {
+            professorOfCurvature: ['Professor of Curvature'],
+            cornerAdeptNormal: ['Corner Adept ○'],
+        }
+        const skillIdToName: Record<string, string> = {
+            professorOfCurvature: 'Professor of Curvature',
+            cornerAdeptNormal: 'Corner Adept ○',
+        }
+        const skillNameToConfigKey: Record<string, string> = {
+            'Professor of Curvature': 'Professor of Curvature',
+            'Corner Adept ○': 'Corner Adept ○',
+        }
+        const configSkills: Record<string, { discount?: number | null }> = {
+            'Professor of Curvature': { discount: 10 },
+            'Corner Adept ○': { discount: 20 },
+        }
+        const context = {
+            skillMeta,
+            skillNames,
+            skillIdToName,
+            skillNameToConfigKey,
+            configSkills,
+            baseUmaSkillIds: [],
+        }
+        const result = calculateSkillCost(
+            'professorOfCurvature',
+            { discount: 10 },
+            context,
+        )
+        expect(result).toBe(289)
+    })
+
+    it('calculates cost for Right-Handed ◎ with prerequisite skill owned', () => {
+        // When uma already has Right-Handed ○, upgrading to Right-Handed ◎
+        // Right-Handed ○: baseCost 100 (already owned, not included in cost)
+        // Right-Handed ◎: baseCost 110, no discount
+        // Expected cost: 110
+        // Only the target skill cost is calculated; owned prerequisites are excluded
+        // Note: higher order = more basic skill (prerequisite)
+        const skillMeta: Record<
+            string,
+            { baseCost: number; groupId?: string; order?: number }
+        > = {
+            rightHandedRare: {
+                baseCost: 110,
+                groupId: 'rightHanded',
+                order: 1,
+            },
+            rightHandedNormal: {
+                baseCost: 100,
+                groupId: 'rightHanded',
+                order: 2,
+            },
+        }
+        const skillNames: Record<string, string[]> = {
+            rightHandedNormal: ['Right-Handed ○'],
+            rightHandedRare: ['Right-Handed ◎'],
+        }
+        const skillIdToName: Record<string, string> = {
+            rightHandedNormal: 'Right-Handed ○',
+            rightHandedRare: 'Right-Handed ◎',
+        }
+        const skillNameToConfigKey: Record<string, string> = {
+            'Right-Handed ○': 'Right-Handed ○',
+            'Right-Handed ◎': 'Right-Handed ◎',
+        }
+        const configSkills: Record<string, { discount?: number | null }> = {
+            'Right-Handed ○': { discount: 0 },
+            'Right-Handed ◎': { discount: 0 },
+        }
+        const context = {
+            skillMeta,
+            skillNames,
+            skillIdToName,
+            skillNameToConfigKey,
+            configSkills,
+            baseUmaSkillIds: ['rightHandedNormal'], // Uma already owns Right-Handed ○
+        }
+        const result = calculateSkillCost(
+            'rightHandedRare',
+            { discount: 0 },
+            context,
+        )
+        expect(result).toBe(110)
     })
 })
 

@@ -1,17 +1,20 @@
-import express from 'express'
 import {
-    readFileSync,
-    writeFileSync,
-    readdirSync,
-    type watch,
     existsSync,
+    readdirSync,
+    readFileSync,
+    type watch,
+    writeFileSync,
 } from 'node:fs'
-import { resolve, join, dirname } from 'node:path'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildSkillNameLookup, normalizeConfigSkillNames } from './utils'
-import type { SkillMeta, RawCourseData } from './types'
+import express from 'express'
+import type { RawCourseData, SkillMeta } from './types'
 import type { SkillDataEntry } from './utils'
+import { buildSkillNameLookup, normalizeConfigSkillNames } from './utils'
+import {
+    SimulationRunner,
+    type SimulationRunnerConfig,
+} from './simulation-runner'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -33,6 +36,7 @@ let cachedSkillnames: Record<string, string[]> | null = null
 let cachedSkillmeta: Record<string, SkillMeta> | null = null
 let cachedCourseData: Record<string, RawCourseData> | null = null
 let cachedSkillData: Record<string, SkillDataEntry> | null = null
+let cachedTracknames: Record<string, string[]> | null = null
 
 // Case-insensitive skill name lookup map (built once after skillnames loads)
 let skillNameLookup: Map<string, string> | null = null
@@ -50,6 +54,9 @@ function loadStaticData(): void {
         )
         cachedSkillData = JSON.parse(
             readFileSync(join(umaToolsDir, 'skill_data.json'), 'utf-8'),
+        )
+        cachedTracknames = JSON.parse(
+            readFileSync(join(umaToolsDir, 'tracknames.json'), 'utf-8'),
         )
         skillNameLookup = buildSkillNameLookup(cachedSkillnames)
     } catch (error) {
@@ -220,11 +227,32 @@ process.on('exit', () => {
     configWatchers.clear()
 })
 
-app.get('/api/run', (req, res) => {
+app.get('/api/simulate', async (req, res) => {
     const configFile = req.query.configFile as string | undefined
+    const skillsParam = req.query.skills as string | undefined
 
     if (!configFile) {
         res.status(400).json({ error: 'configFile parameter required' })
+        return
+    }
+
+    // Parse optional skills filter (comma-separated skill names)
+    const skillFilter = skillsParam
+        ? skillsParam
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+        : undefined
+
+    // Check required static data is loaded
+    if (
+        !cachedSkillmeta ||
+        !cachedSkillnames ||
+        !cachedSkillData ||
+        !cachedCourseData ||
+        !cachedTracknames
+    ) {
+        res.status(500).json({ error: 'Static data not loaded' })
         return
     }
 
@@ -233,29 +261,13 @@ app.get('/api/run', (req, res) => {
     res.setHeader('Connection', 'keep-alive')
     res.setHeader('X-Accel-Buffering', 'no')
 
-    const cliPath = resolve(__dirname, 'cli.js')
-
-    if (!existsSync(cliPath)) {
-        res.write(
-            `data: ${JSON.stringify({ type: 'error', error: "CLI not built. Please run 'npm run build' first." })}\n\n`,
-        )
-        res.end()
-        return
-    }
-
-    res.write(`data: ${JSON.stringify({ type: 'started' })}\n\n`)
-    if (res.flushHeaders) {
-        res.flushHeaders()
-    }
-
     let requestClosed = false
 
     const keepAlive = setInterval(() => {
         if (!requestClosed) {
             try {
                 res.write(`: keepalive\n\n`)
-            } catch (error) {
-                console.error('Error sending keepalive:', error)
+            } catch {
                 requestClosed = true
                 clearInterval(keepAlive)
             }
@@ -264,175 +276,76 @@ app.get('/api/run', (req, res) => {
         }
     }, 30000)
 
-    let child: ChildProcess | null = null
-    let processStarted = false
-
-    try {
-        child = spawn('node', [cliPath, configFile], {
-            cwd: __dirname,
-            stdio: ['ignore', 'pipe', 'pipe'],
-            shell: false,
-            env: {
-                ...process.env,
-                NODE_ENV: process.env.NODE_ENV || 'production',
-            },
-        })
-        processStarted = true
-        console.log(`Process spawned with PID: ${child.pid}`)
-    } catch (error) {
-        const err = error as Error
-        console.error('Error spawning process:', error)
-        res.write(
-            `data: ${JSON.stringify({ type: 'error', error: `Failed to spawn process: ${err.message}` })}\n\n`,
-        )
-        res.end()
-        return
-    }
-
-    let output = ''
-    let hasOutput = false
-    let stderrOutput = ''
-
-    const sendData = (data: Buffer): void => {
-        if (requestClosed) {
-            console.log('Skipping output write - request already closed')
-            return
-        }
-        const dataStr = data.toString()
-        output += dataStr
-        hasOutput = true
-        try {
-            res.write(
-                `data: ${JSON.stringify({ type: 'output', data: dataStr })}\n\n`,
-            )
-        } catch (error) {
-            console.error('Error writing to response:', error)
-            requestClosed = true
-        }
-    }
-
-    const sendStderr = (data: Buffer): void => {
-        if (requestClosed) {
-            return
-        }
-        const dataStr = data.toString()
-        stderrOutput += dataStr
-        console.error(`CLI stderr:`, dataStr)
-        // Send warnings as a distinct message type
-        try {
-            res.write(
-                `data: ${JSON.stringify({ type: 'warning', data: dataStr })}\n\n`,
-            )
-        } catch (error) {
-            console.error('Error writing warning to response:', error)
-            requestClosed = true
-        }
-    }
-
-    if (child.stdout) {
-        child.stdout.on('data', sendData)
-    }
-    if (child.stderr) {
-        child.stderr.on('data', sendStderr)
-    }
-
-    if (child.stdout) {
-        child.stdout.on('error', (error) => {
-            console.error('stdout error:', error)
-        })
-    }
-
-    if (child.stderr) {
-        child.stderr.on('error', (error) => {
-            console.error('stderr error:', error)
-        })
-    }
-
-    child.on('close', (code, signal) => {
-        clearTimeout(timeout)
-        clearInterval(keepAlive)
-
-        if (stderrOutput) {
-            console.error('Stderr content:', stderrOutput)
-        }
-
-        if (requestClosed) {
-            console.log('Response already closed, skipping final write')
-            return
-        }
-
-        try {
-            if (!hasOutput && !output && !stderrOutput) {
-                res.write(
-                    `data: ${JSON.stringify({
-                        type: 'error',
-                        error: `Process exited without producing output. Exit code: ${code}, Signal: ${signal}. Make sure cli.js is built and dependencies are available.`,
-                    })}\n\n`,
-                )
-            } else if (code !== null) {
-                res.write(
-                    `data: ${JSON.stringify({ type: 'done', code, output })}\n\n`,
-                )
-            } else if (signal) {
-                res.write(
-                    `data: ${JSON.stringify({ type: 'done', code: null, signal, output })}\n\n`,
-                )
-            } else {
-                res.write(
-                    `data: ${JSON.stringify({ type: 'done', code: null, output })}\n\n`,
-                )
-            }
-            res.end()
-        } catch (error) {
-            console.error('Error writing final response:', error)
-        }
-    })
-
-    child.on('error', (error) => {
-        const errorMsg = `Failed to start process: ${error.message}`
-        console.error('CLI spawn error:', error)
-        res.write(
-            `data: ${JSON.stringify({ type: 'error', error: errorMsg })}\n\n`,
-        )
-        res.end()
-    })
-
-    const timeout = setTimeout(
-        () => {
-            if (child && !child.killed) {
-                console.log('Process timeout, killing child process')
-                child.kill('SIGTERM')
-                res.write(
-                    `data: ${JSON.stringify({
-                        type: 'error',
-                        error: 'Process timed out after 5 minutes',
-                    })}\n\n`,
-                )
-                res.end()
-            }
-        },
-        5 * 60 * 1000,
-    )
-
     req.on('close', () => {
         requestClosed = true
         clearInterval(keepAlive)
-        clearTimeout(timeout)
-        if (child && !child.killed && processStarted) {
-            child.kill('SIGTERM')
-        }
     })
 
     req.on('aborted', () => {
-        console.log('Request aborted by client')
         requestClosed = true
         clearInterval(keepAlive)
-        clearTimeout(timeout)
-        if (child && !child.killed && processStarted) {
-            console.log('Killing child process due to request abort')
-            child.kill('SIGTERM')
-        }
     })
+
+    try {
+        // Load config file
+        const configPath = join(configDir, configFile)
+        if (!existsSync(configPath)) {
+            res.write(
+                `data: ${JSON.stringify({ type: 'error', error: `Config file not found: ${configFile}` })}\n\n`,
+            )
+            res.end()
+            return
+        }
+
+        const configContent = readFileSync(configPath, 'utf-8')
+        const config = JSON.parse(configContent) as SimulationRunnerConfig
+
+        res.write(`data: ${JSON.stringify({ type: 'started' })}\n\n`)
+        if (res.flushHeaders) {
+            res.flushHeaders()
+        }
+
+        const workerPath = new URL('./simulation.worker.js', import.meta.url)
+        const runner = new SimulationRunner(
+            config,
+            {
+                skillMeta: cachedSkillmeta,
+                skillNames: cachedSkillnames,
+                skillData: cachedSkillData,
+                courseData: cachedCourseData,
+                trackNames: cachedTracknames,
+            },
+            workerPath,
+        )
+
+        await runner.run((progress) => {
+            if (requestClosed) return
+            try {
+                res.write(`data: ${JSON.stringify(progress)}\n\n`)
+            } catch {
+                requestClosed = true
+            }
+        }, skillFilter)
+
+        if (!requestClosed) {
+            res.end()
+        }
+    } catch (error) {
+        const err = error as Error
+        console.error('Simulation error:', err)
+        if (!requestClosed) {
+            try {
+                res.write(
+                    `data: ${JSON.stringify({ type: 'error', error: err.message })}\n\n`,
+                )
+                res.end()
+            } catch {
+                // Ignore write errors
+            }
+        }
+    } finally {
+        clearInterval(keepAlive)
+    }
 })
 
 app.listen(PORT, () => {

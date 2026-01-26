@@ -35,10 +35,11 @@ export const Time = {
     NoTime: 0,
 } as const
 export type Time = (typeof Time)[keyof typeof Time]
+
 import type {
     DistanceType,
-    Surface,
     Orientation,
+    Surface,
     ThresholdStat,
 } from '../uma-tools/uma-skill-tools/CourseData'
 

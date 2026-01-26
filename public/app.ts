@@ -30,6 +30,7 @@ interface Uma {
     mood?: number | null
     unique?: string
     skills?: string[]
+    skillPoints?: number | null
 }
 
 interface Config {
@@ -38,8 +39,32 @@ interface Config {
     uma?: Uma
 }
 
+// Results from simulation
+interface SkillResult {
+    skill: string
+    cost: number
+    discount: number
+    numSimulations: number
+    meanLength: number
+    medianLength: number
+    meanLengthPerCost: number
+    minLength: number
+    maxLength: number
+    ciLower: number
+    ciUpper: number
+}
+
+interface SkillResultWithStatus extends SkillResult {
+    status: 'cached' | 'fresh' | 'pending' | 'error'
+    rawResults?: number[]
+    errorMessage?: string
+}
+
 type SkillNames = Record<string, string[]>
-type SkillMeta = Record<string, { groupId?: string }>
+type SkillMeta = Record<
+    string,
+    { baseCost?: number; groupId?: string; order?: number }
+>
 type CourseData = Record<
     string,
     {
@@ -168,6 +193,17 @@ let skillData: SkillData | null = null
 
 // Cache for variant lookups (built once after skillnames loads)
 let variantCache: Map<string, string[]> | null = null
+
+// Results state
+const resultsMap = new Map<string, SkillResultWithStatus>()
+const selectedSkills = new Set<string>()
+let sortColumn: keyof SkillResult = 'meanLengthPerCost'
+let sortDirection: 'asc' | 'desc' = 'desc'
+let lastCalculationTime: Date | null = null
+
+// Frontend cache for calculated results (persists when skills are removed from table)
+// Key: skillName, Value: result without status (raw calculation data)
+const calculatedResultsCache = new Map<string, SkillResult>()
 
 // Case-insensitive skill name lookup map (built once after skillnames loads)
 let skillNameLookup: Map<string, string> | null = null
@@ -924,6 +960,208 @@ function getSkillGroupId(skillName: string): string | null {
     return skillmeta[skillId]?.groupId || null
 }
 
+function getSkillOrder(skillName: string): number {
+    if (!skillmeta) return 0
+    const skillId = findSkillId(skillName)
+    if (!skillId) return 0
+    return skillmeta[skillId]?.order ?? 0
+}
+
+/**
+ * Check if Uma has an upgraded version of the given skill.
+ * Upgraded skills have lower order numbers in the same groupId.
+ */
+function umaHasUpgradedVersion(skillName: string): boolean {
+    if (!currentConfig?.uma?.skills || !skillmeta) return false
+
+    const groupId = getSkillGroupId(skillName)
+    if (!groupId) return false
+
+    const skillOrder = getSkillOrder(skillName)
+
+    for (const umaSkill of currentConfig.uma.skills) {
+        const umaGroupId = getSkillGroupId(umaSkill)
+        const umaOrder = getSkillOrder(umaSkill)
+        if (umaGroupId === groupId && umaOrder < skillOrder) {
+            return true
+        }
+    }
+    return false
+}
+
+/**
+ * Check if a skill is currently on Uma (exact match).
+ */
+function isSkillOnUma(skillName: string): boolean {
+    return currentConfig?.uma?.skills?.includes(skillName) ?? false
+}
+
+/**
+ * Get the skill from the same group that is currently on Uma.
+ * Returns null if no skill from the group is on Uma.
+ */
+function getGroupVariantOnUma(skillName: string): string | null {
+    if (!currentConfig?.uma?.skills || !skillmeta) return null
+
+    const groupId = getSkillGroupId(skillName)
+    if (!groupId) return null
+
+    for (const umaSkill of currentConfig.uma.skills) {
+        const umaGroupId = getSkillGroupId(umaSkill)
+        if (umaGroupId === groupId) {
+            return umaSkill
+        }
+    }
+    return null
+}
+
+/**
+ * Get the basic variant (higher order) of a skill in the same group.
+ * Returns null if no basic variant exists.
+ */
+function getBasicVariant(skillName: string): string | null {
+    if (!skillmeta || !skillnames) return null
+
+    const skillId = findSkillId(skillName)
+    if (!skillId) return null
+
+    const currentMeta = skillmeta[skillId]
+    if (!currentMeta?.groupId) return null
+
+    const currentGroupId = currentMeta.groupId
+    const currentOrder = currentMeta.order ?? 0
+
+    // Find skill with higher order (basic version) in the same group
+    for (const [otherId, otherMeta] of Object.entries(skillmeta)) {
+        if (
+            otherMeta.groupId === currentGroupId &&
+            (otherMeta.order ?? 0) > currentOrder
+        ) {
+            const names = skillnames[otherId]
+            if (names?.[0]) {
+                return names[0]
+            }
+        }
+    }
+    return null
+}
+
+/**
+ * Get the upgraded variant (lower order) of a skill in the same group.
+ * Returns null if no upgraded variant exists.
+ */
+function getUpgradedVariant(skillName: string): string | null {
+    if (!skillmeta || !skillnames) return null
+
+    const skillId = findSkillId(skillName)
+    if (!skillId) return null
+
+    const currentMeta = skillmeta[skillId]
+    if (!currentMeta?.groupId) return null
+
+    const currentGroupId = currentMeta.groupId
+    const currentOrder = currentMeta.order ?? 0
+
+    // Find skill with lower order (upgraded version) in the same group
+    for (const [otherId, otherMeta] of Object.entries(skillmeta)) {
+        if (
+            otherMeta.groupId === currentGroupId &&
+            (otherMeta.order ?? 0) < currentOrder
+        ) {
+            const names = skillnames[otherId]
+            if (names?.[0]) {
+                return names[0]
+            }
+        }
+    }
+    return null
+}
+
+function getSkillBaseCost(skillName: string): number {
+    if (!skillmeta) return 200
+    const skillId = findSkillId(skillName)
+    if (!skillId) return 200
+    return skillmeta[skillId]?.baseCost ?? 200
+}
+
+// Skills to ignore when calculating prerequisite costs (negative/debuff skills)
+const SKILLS_TO_IGNORE = [
+    '99 Problems',
+    'G1 Averseness',
+    'Gatekept',
+    'Inner Post Averseness',
+    'Outer Post Averseness',
+    'Paddock Fright',
+    'Wallflower',
+    "You're Not the Boss of Me!",
+    '♡ 3D Nail Art',
+]
+
+/**
+ * Calculate skill cost including prerequisite costs.
+ * For upgraded skills (◎), this adds the cost of prerequisite skills (○)
+ * that Uma doesn't already have.
+ *
+ * NOTE: This logic is intentionally duplicated from utils.ts:calculateSkillCost
+ * to avoid complex build steps for sharing server-side code with the frontend.
+ * Keep both implementations in sync when modifying cost calculation logic.
+ */
+function getSkillCostWithDiscount(skillName: string): number {
+    const baseCost = getSkillBaseCost(skillName)
+    const discount = currentConfig?.skills[skillName]?.discount ?? 0
+    let totalCost = Math.ceil(baseCost * (1 - discount / 100))
+
+    if (!skillmeta || !skillnames) return totalCost
+
+    const skillId = findSkillId(skillName)
+    if (!skillId) return totalCost
+
+    const currentMeta = skillmeta[skillId]
+    if (!currentMeta?.groupId) return totalCost
+
+    const currentGroupId = currentMeta.groupId
+    const currentOrder = currentMeta.order ?? 0
+    const umaSkills = currentConfig?.uma?.skills || []
+
+    // Find prerequisite skills (same groupId, higher order = basic versions)
+    for (const [otherSkillId, otherMeta] of Object.entries(skillmeta)) {
+        if (
+            otherMeta.groupId === currentGroupId &&
+            (otherMeta.order ?? 0) > currentOrder
+        ) {
+            const otherSkillNames = skillnames[otherSkillId]
+            if (!otherSkillNames) continue
+
+            // Skip negative/debuff skills (ending with " ×") and ignored skills
+            const primaryName = otherSkillNames[0]
+            if (
+                primaryName.endsWith(' ×') ||
+                SKILLS_TO_IGNORE.includes(primaryName)
+            ) {
+                continue
+            }
+
+            // Check if Uma already has this prerequisite
+            const umaHasPrereq = umaSkills.some((umaSkill) => {
+                const umaSkillId = findSkillId(umaSkill)
+                return umaSkillId === otherSkillId
+            })
+
+            if (!umaHasPrereq) {
+                // Add prerequisite cost with its discount
+                const prereqBaseCost = otherMeta.baseCost ?? 200
+                const prereqDiscount =
+                    currentConfig?.skills[primaryName]?.discount ?? 0
+                totalCost += Math.ceil(
+                    prereqBaseCost * (1 - prereqDiscount / 100),
+                )
+            }
+        }
+    }
+
+    return totalCost
+}
+
 async function loadConfigFiles(): Promise<void> {
     const response = await fetch('/api/configs')
     const files = (await response.json()) as string[]
@@ -1169,32 +1407,12 @@ function renderSkills(): void {
             const currentlyInUmaSkills =
                 currentConfig.uma.skills.includes(skillName)
             if (currentlyInUmaSkills) {
-                const skillIndex = currentConfig.uma.skills.indexOf(skillName)
-                if (skillIndex !== -1) {
-                    currentConfig.uma.skills.splice(skillIndex, 1)
-                }
+                // Removing skill
+                removeSkillFromUma(skillName)
             } else {
-                const newSkillGroupId = getSkillGroupId(skillName)
-                let replaced = false
-
-                if (newSkillGroupId) {
-                    for (let i = 0; i < currentConfig.uma.skills.length; i++) {
-                        const existingSkill = currentConfig.uma.skills[i]
-                        const existingGroupId = getSkillGroupId(existingSkill)
-                        if (existingGroupId === newSkillGroupId) {
-                            currentConfig.uma.skills[i] = skillName
-                            replaced = true
-                            break
-                        }
-                    }
-                }
-
-                if (
-                    !replaced &&
-                    !currentConfig.uma.skills.includes(skillName)
-                ) {
-                    currentConfig.uma.skills.push(skillName)
-                }
+                // Adding skill
+                const cost = getSkillCostWithDiscount(skillName)
+                addSkillToUmaFromTable(skillName, cost)
             }
             renderUma()
             renderSkills()
@@ -1653,6 +1871,21 @@ function renderTrack(): void {
                 renderSkills()
             }
 
+            // Clear simulation cache when track settings change (affects results)
+            const simulationAffectingFields: (keyof Track)[] = [
+                'courseId',
+                'trackName',
+                'surface',
+                'distance',
+                'groundCondition',
+                'weather',
+                'season',
+                'numUmas',
+            ]
+            if (simulationAffectingFields.includes(field.key)) {
+                calculatedResultsCache.clear()
+            }
+
             autoSave()
         })
         wrapper.appendChild(input)
@@ -1732,6 +1965,7 @@ function renderUma(): void {
             max: 2,
         },
         { key: 'unique', label: 'Unique', type: 'text', width: 280 },
+        { key: 'skillPoints', label: 'SP', type: 'number', width: 65 },
     ]
 
     const createUmaField = (field: UmaField): HTMLElement => {
@@ -1779,6 +2013,14 @@ function renderUma(): void {
             if (field.max !== undefined) {
                 input.max = String(field.max)
             }
+            // Highlight skillPoints in red when negative (over budget)
+            if (
+                field.key === 'skillPoints' &&
+                typeof fieldValue === 'number' &&
+                fieldValue < 0
+            ) {
+                input.classList.add('text-red-400', 'border-red-500')
+            }
         }
 
         input.dataset.key = field.key
@@ -1801,6 +2043,23 @@ function renderUma(): void {
             // Re-render skills when strategy changes (affects running style filtering)
             if (field.key === 'strategy') {
                 renderSkills()
+            }
+
+            // Clear simulation cache when uma settings that affect results change
+            const simulationAffectingFields = [
+                'speed',
+                'stamina',
+                'power',
+                'guts',
+                'wisdom',
+                'strategy',
+                'distanceAptitude',
+                'surfaceAptitude',
+                'styleAptitude',
+                'mood',
+            ]
+            if (simulationAffectingFields.includes(field.key)) {
+                calculatedResultsCache.clear()
             }
 
             autoSave()
@@ -1827,6 +2086,8 @@ function renderUma(): void {
         }
         currentConfig.uma.skills = newSkills
         renderUma()
+        renderSkills()
+        refreshResultsCosts()
         autoSave()
     }
 
@@ -1851,11 +2112,137 @@ function renderUma(): void {
             const finishEdit = () => {
                 const newValue = getCanonicalSkillName(editInput.value.trim())
                 if (newValue && newValue !== skill) {
-                    const newSkills = [...skills]
-                    newSkills[index] = newValue
-                    updateSkills(newSkills)
+                    // Renaming skill - treat as remove old + add new
+
+                    // Refund old skill cost
+                    const oldCost = getSkillCostWithDiscount(skill)
+                    if (
+                        currentConfig?.uma?.skillPoints !== undefined &&
+                        currentConfig?.uma?.skillPoints !== null
+                    ) {
+                        currentConfig.uma.skillPoints += oldCost
+                    }
+
+                    // Return old skill to results table
+                    void returnSkillToResultsTable(skill)
+
+                    // Handle old skill's variant restoration
+                    const oldUpgradedVariant = getUpgradedVariant(skill)
+                    if (!oldUpgradedVariant) {
+                        restoreUpgradedSkillsForBasicSkill(skill)
+                    }
+                    const oldBasicVariant = getBasicVariant(skill)
+                    if (oldBasicVariant) {
+                        void returnSkillToResultsTable(oldBasicVariant)
+                    }
+
+                    // Check if new skill already on Uma
+                    if (skills.includes(newValue)) {
+                        // Just remove the old skill
+                        const newSkills = skills.filter((_, i) => i !== index)
+                        updateSkills(newSkills)
+                        return
+                    }
+
+                    // Check if new skill's variant is already on Uma
+                    const existingVariant = getGroupVariantOnUma(newValue)
+                    if (existingVariant && existingVariant !== skill) {
+                        // Another variant already exists, need to handle that
+                        const existingCost =
+                            getSkillCostWithDiscount(existingVariant)
+                        if (
+                            currentConfig?.uma?.skillPoints !== undefined &&
+                            currentConfig?.uma?.skillPoints !== null
+                        ) {
+                            currentConfig.uma.skillPoints += existingCost
+                        }
+                        const existingVariantOrder =
+                            getSkillOrder(existingVariant)
+                        const newSkillOrder = getSkillOrder(newValue)
+                        if (existingVariantOrder < newSkillOrder) {
+                            void returnSkillToResultsTable(existingVariant)
+                            restoreUpgradedSkillsForBasicSkill(newValue)
+                        }
+                        // Remove existing variant from skills array
+                        const newSkills = skills.filter(
+                            (s, i) => i !== index && s !== existingVariant,
+                        )
+                        newSkills.push(newValue)
+
+                        // Deduct new skill cost
+                        const newCost = getSkillCostWithDiscount(newValue)
+                        if (
+                            currentConfig?.uma?.skillPoints !== undefined &&
+                            currentConfig?.uma?.skillPoints !== null
+                        ) {
+                            currentConfig.uma.skillPoints -= newCost
+                        }
+
+                        // Handle new skill's variant updates
+                        const newBasicVariant = getBasicVariant(newValue)
+                        if (!newBasicVariant) {
+                            updateUpgradedSkillsForBasicSkill(newValue)
+                        }
+                        resultsMap.delete(newValue)
+                        selectedSkills.delete(newValue)
+                        if (newBasicVariant) {
+                            resultsMap.delete(newBasicVariant)
+                            selectedSkills.delete(newBasicVariant)
+                        }
+
+                        updateSkills(newSkills)
+                    } else {
+                        // No conflicting variant, just replace
+                        const newSkills = [...skills]
+                        newSkills[index] = newValue
+
+                        // Deduct new skill cost
+                        const newCost = getSkillCostWithDiscount(newValue)
+                        if (
+                            currentConfig?.uma?.skillPoints !== undefined &&
+                            currentConfig?.uma?.skillPoints !== null
+                        ) {
+                            currentConfig.uma.skillPoints -= newCost
+                        }
+
+                        // Handle new skill's variant updates
+                        const newBasicVariant = getBasicVariant(newValue)
+                        if (!newBasicVariant) {
+                            updateUpgradedSkillsForBasicSkill(newValue)
+                        }
+                        resultsMap.delete(newValue)
+                        selectedSkills.delete(newValue)
+                        if (newBasicVariant) {
+                            resultsMap.delete(newBasicVariant)
+                            selectedSkills.delete(newBasicVariant)
+                        }
+
+                        updateSkills(newSkills)
+                    }
                 } else if (!newValue) {
-                    // Empty value removes the skill
+                    // Empty value removes the skill - refund cost
+                    if (
+                        currentConfig?.uma?.skillPoints !== undefined &&
+                        currentConfig?.uma?.skillPoints !== null
+                    ) {
+                        const skillCost = getSkillCostWithDiscount(skill)
+                        currentConfig.uma.skillPoints += skillCost
+                    }
+                    // Return skill to results table
+                    void returnSkillToResultsTable(skill)
+
+                    // Check if this was a basic skill - restore upgraded skill full stats
+                    const upgradedVariant = getUpgradedVariant(skill)
+                    if (upgradedVariant) {
+                        restoreUpgradedSkillsForBasicSkill(skill)
+                    }
+
+                    // If this was an upgraded skill, also show basic skill in results
+                    const basicVariant = getBasicVariant(skill)
+                    if (basicVariant) {
+                        void returnSkillToResultsTable(basicVariant)
+                    }
+
                     const newSkills = skills.filter((_, i) => i !== index)
                     updateSkills(newSkills)
                 } else {
@@ -1886,6 +2273,30 @@ function renderUma(): void {
         removeBtn.innerHTML = '&times;'
         removeBtn.addEventListener('click', (e) => {
             e.stopPropagation()
+            // Refund skill cost
+            if (
+                currentConfig?.uma?.skillPoints !== undefined &&
+                currentConfig?.uma?.skillPoints !== null
+            ) {
+                const skillCost = getSkillCostWithDiscount(skill)
+                currentConfig.uma.skillPoints += skillCost
+            }
+            // Return skill to results table
+            void returnSkillToResultsTable(skill)
+
+            // Check if this was a basic skill - restore upgraded skill full stats
+            const upgradedVariant = getUpgradedVariant(skill)
+            if (upgradedVariant) {
+                // This is a basic skill (has an upgraded variant), restore upgraded skills
+                restoreUpgradedSkillsForBasicSkill(skill)
+            }
+
+            // If this was an upgraded skill, also show basic skill in results
+            const basicVariant = getBasicVariant(skill)
+            if (basicVariant) {
+                void returnSkillToResultsTable(basicVariant)
+            }
+
             const newSkills = skills.filter((_, i) => i !== index)
             updateSkills(newSkills)
         })
@@ -1917,7 +2328,92 @@ function renderUma(): void {
         const finishAdd = () => {
             const newSkill = getCanonicalSkillName(addInput.value.trim())
             if (newSkill) {
-                updateSkills([...skills, newSkill])
+                // Check if already on Uma
+                if (skills.includes(newSkill)) {
+                    renderUma()
+                    return
+                }
+
+                // Check if a variant from the same group is on Uma
+                const existingVariant = getGroupVariantOnUma(newSkill)
+                const existingVariantOrder = existingVariant
+                    ? getSkillOrder(existingVariant)
+                    : 0
+                const newSkillOrder = getSkillOrder(newSkill)
+
+                if (existingVariant) {
+                    // Refund the existing variant's cost
+                    const existingCost =
+                        getSkillCostWithDiscount(existingVariant)
+                    if (
+                        currentConfig?.uma?.skillPoints !== undefined &&
+                        currentConfig?.uma?.skillPoints !== null
+                    ) {
+                        currentConfig.uma.skillPoints += existingCost
+                    }
+
+                    // Handle stats restoration based on which variant is replaced
+                    if (existingVariantOrder < newSkillOrder) {
+                        // Existing is upgraded, new is basic - return upgraded to table
+                        void returnSkillToResultsTable(existingVariant)
+                        restoreUpgradedSkillsForBasicSkill(newSkill)
+                    }
+
+                    // Replace variant in skills array
+                    const idx = skills.indexOf(existingVariant)
+                    const newSkills = [...skills]
+                    newSkills[idx] = newSkill
+
+                    // Deduct new skill cost
+                    const newSkillCost = getSkillCostWithDiscount(newSkill)
+                    if (
+                        currentConfig?.uma?.skillPoints !== undefined &&
+                        currentConfig?.uma?.skillPoints !== null
+                    ) {
+                        currentConfig.uma.skillPoints -= newSkillCost
+                    }
+
+                    // Handle stats update for adding basic skill
+                    const basicVariant = getBasicVariant(newSkill)
+                    if (!basicVariant) {
+                        updateUpgradedSkillsForBasicSkill(newSkill)
+                    }
+
+                    // Hide variants from results
+                    resultsMap.delete(newSkill)
+                    selectedSkills.delete(newSkill)
+                    if (basicVariant) {
+                        resultsMap.delete(basicVariant)
+                        selectedSkills.delete(basicVariant)
+                    }
+
+                    updateSkills(newSkills)
+                } else {
+                    // No variant on Uma, just add the skill
+                    const newSkillCost = getSkillCostWithDiscount(newSkill)
+                    if (
+                        currentConfig?.uma?.skillPoints !== undefined &&
+                        currentConfig?.uma?.skillPoints !== null
+                    ) {
+                        currentConfig.uma.skillPoints -= newSkillCost
+                    }
+
+                    // Handle stats update for adding basic skill
+                    const basicVariant = getBasicVariant(newSkill)
+                    if (!basicVariant) {
+                        updateUpgradedSkillsForBasicSkill(newSkill)
+                    }
+
+                    // Hide variants from results
+                    resultsMap.delete(newSkill)
+                    selectedSkills.delete(newSkill)
+                    if (basicVariant) {
+                        resultsMap.delete(basicVariant)
+                        selectedSkills.delete(basicVariant)
+                    }
+
+                    updateSkills([...skills, newSkill])
+                }
             } else {
                 renderUma()
             }
@@ -1950,6 +2446,361 @@ function renderUma(): void {
     container.appendChild(line)
 }
 
+// Results table rendering
+function renderResultsTable(): void {
+    const tbody = document.getElementById('results-tbody')
+    const countEl = document.getElementById('results-count')
+    const lastRunEl = document.getElementById('results-last-run')
+    if (!tbody) return
+
+    tbody.innerHTML = ''
+
+    // Filter out:
+    // 1. Skills that are on Uma (exact match)
+    // 2. Basic skills where Uma has the upgraded version
+    const results = Array.from(resultsMap.values()).filter((result) => {
+        // Don't show skills that are on Uma
+        if (isSkillOnUma(result.skill)) return false
+        // Don't show basic skills when Uma has the upgraded version
+        if (umaHasUpgradedVersion(result.skill)) return false
+        return true
+    })
+
+    // Clean up selectedSkills to remove any filtered-out skills
+    for (const skill of selectedSkills) {
+        if (isSkillOnUma(skill) || umaHasUpgradedVersion(skill)) {
+            selectedSkills.delete(skill)
+        }
+    }
+
+    if (results.length === 0) {
+        if (countEl) countEl.textContent = 'No results yet'
+        updateTotalsRow()
+        return
+    }
+
+    // Sort results
+    results.sort((a, b) => {
+        const aVal = a[sortColumn]
+        const bVal = b[sortColumn]
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+            return sortDirection === 'asc'
+                ? aVal.localeCompare(bVal)
+                : bVal.localeCompare(aVal)
+        }
+        const aNum = Number(aVal)
+        const bNum = Number(bVal)
+        return sortDirection === 'asc' ? aNum - bNum : bNum - aNum
+    })
+
+    for (const result of results) {
+        const row = document.createElement('tr')
+        row.className =
+            'border-b border-zinc-700 hover:bg-zinc-700 ' +
+            (result.status === 'pending' ? 'opacity-50' : '')
+        row.dataset.skill = result.skill
+
+        // Checkbox cell
+        const checkCell = document.createElement('td')
+        checkCell.className = 'p-1'
+        const checkbox = document.createElement('input')
+        checkbox.type = 'checkbox'
+        checkbox.checked = selectedSkills.has(result.skill)
+        checkbox.addEventListener('change', () => {
+            if (checkbox.checked) {
+                selectedSkills.add(result.skill)
+            } else {
+                selectedSkills.delete(result.skill)
+            }
+            updateTotalsRow()
+            updateSelectAllCheckbox()
+        })
+        checkCell.appendChild(checkbox)
+        row.appendChild(checkCell)
+
+        // Add to Uma button cell
+        const addCell = document.createElement('td')
+        addCell.className = 'p-1'
+        const addBtn = document.createElement('button')
+        addBtn.className =
+            'bg-sky-600 text-white border-none rounded w-5 h-5 text-sm leading-none cursor-pointer flex items-center justify-center p-0 transition-colors hover:bg-sky-700 active:bg-sky-800'
+        addBtn.textContent = '+'
+        addBtn.title = 'Add to Uma skills'
+        addBtn.addEventListener('click', () => {
+            addSkillToUmaFromTable(result.skill, result.cost)
+        })
+        addCell.appendChild(addBtn)
+        row.appendChild(addCell)
+
+        // Skill name
+        const skillCell = document.createElement('td')
+        skillCell.className = 'p-1'
+        skillCell.textContent = result.skill
+        row.appendChild(skillCell)
+
+        // Cost
+        const costCell = document.createElement('td')
+        costCell.className = 'p-1 text-right'
+        costCell.textContent = result.cost.toString()
+        row.appendChild(costCell)
+
+        // Discount
+        const discountCell = document.createElement('td')
+        discountCell.className = 'p-1 text-right'
+        discountCell.textContent =
+            result.discount > 0 ? `${result.discount}%` : '-'
+        row.appendChild(discountCell)
+
+        // Sims
+        const simsCell = document.createElement('td')
+        simsCell.className = 'p-1 text-right'
+        simsCell.textContent =
+            result.status === 'pending'
+                ? '...'
+                : result.numSimulations.toString()
+        row.appendChild(simsCell)
+
+        // Mean
+        const meanCell = document.createElement('td')
+        meanCell.className = 'p-1 text-right'
+        meanCell.textContent =
+            result.status === 'pending' ? '...' : result.meanLength.toFixed(2)
+        row.appendChild(meanCell)
+
+        // Median
+        const medianCell = document.createElement('td')
+        medianCell.className = 'p-1 text-right'
+        medianCell.textContent =
+            result.status === 'pending' ? '...' : result.medianLength.toFixed(2)
+        row.appendChild(medianCell)
+
+        // Mean/Cost
+        const effCell = document.createElement('td')
+        effCell.className = 'p-1 text-right'
+        effCell.textContent =
+            result.status === 'pending'
+                ? '...'
+                : (result.meanLengthPerCost * 1000).toFixed(2)
+        row.appendChild(effCell)
+
+        // Min-Max
+        const minMaxCell = document.createElement('td')
+        minMaxCell.className = 'p-1 text-right'
+        minMaxCell.textContent =
+            result.status === 'pending'
+                ? '...'
+                : `${result.minLength.toFixed(2)}-${result.maxLength.toFixed(2)}`
+        row.appendChild(minMaxCell)
+
+        // CI
+        const ciCell = document.createElement('td')
+        ciCell.className = 'p-1 text-right'
+        ciCell.textContent =
+            result.status === 'pending'
+                ? '...'
+                : `${result.ciLower.toFixed(2)}-${result.ciUpper.toFixed(2)}`
+        row.appendChild(ciCell)
+
+        tbody.appendChild(row)
+    }
+
+    // Update count
+    const completedCount = results.filter((r) => r.status !== 'pending').length
+    if (countEl) {
+        countEl.textContent = `Calculated ${completedCount}/${results.length} skills`
+    }
+
+    // Update last run time
+    if (lastRunEl && lastCalculationTime) {
+        lastRunEl.textContent = `Last run: ${lastCalculationTime.toLocaleTimeString()}`
+    }
+
+    updateTotalsRow()
+}
+
+function updateTotalsRow(): void {
+    const totalsDiv = document.getElementById('results-totals')
+    const costEl = document.getElementById('totals-cost')
+    const meanEl = document.getElementById('totals-mean')
+    const effEl = document.getElementById('totals-efficiency')
+    const minmaxEl = document.getElementById('totals-minmax')
+    if (!totalsDiv || !costEl || !meanEl || !effEl || !minmaxEl) return
+
+    if (selectedSkills.size < 2) {
+        totalsDiv.classList.add('hidden')
+        return
+    }
+
+    totalsDiv.classList.remove('hidden')
+
+    let totalCost = 0
+    let totalMean = 0
+    let totalMin = 0
+    let totalMax = 0
+    let validCount = 0
+
+    for (const skillName of selectedSkills) {
+        const result = resultsMap.get(skillName)
+        if (result && result.status !== 'pending') {
+            totalCost += result.cost
+            totalMean += result.meanLength
+            totalMin += result.minLength
+            totalMax += result.maxLength
+            validCount++
+        }
+    }
+
+    if (validCount === 0) {
+        totalsDiv.classList.add('hidden')
+        return
+    }
+
+    const totalEfficiency = totalCost > 0 ? (totalMean / totalCost) * 1000 : 0
+
+    costEl.textContent = `Cost: ${totalCost}`
+    meanEl.textContent = `Mean: ${totalMean.toFixed(2)}`
+    effEl.textContent = `Mean/Cost: ${totalEfficiency.toFixed(2)}`
+    minmaxEl.textContent = `Min-Max: ${totalMin.toFixed(2)}-${totalMax.toFixed(2)}`
+}
+
+function updateSelectAllCheckbox(): void {
+    const checkbox = document.getElementById(
+        'select-all-checkbox',
+    ) as HTMLInputElement | null
+    if (!checkbox) return
+
+    const allSkills = Array.from(resultsMap.keys())
+    if (allSkills.length === 0) {
+        checkbox.checked = false
+        checkbox.indeterminate = false
+        return
+    }
+
+    const selectedCount = allSkills.filter((s) => selectedSkills.has(s)).length
+    checkbox.checked = selectedCount === allSkills.length
+    checkbox.indeterminate =
+        selectedCount > 0 && selectedCount < allSkills.length
+}
+
+function addSkillToUmaFromTable(skillName: string, cost: number): void {
+    if (!currentConfig) return
+    if (!currentConfig.uma) {
+        currentConfig.uma = {}
+    }
+    if (!currentConfig.uma.skills) {
+        currentConfig.uma.skills = []
+    }
+
+    // Check if skill is already on Uma
+    if (currentConfig.uma.skills.includes(skillName)) return
+
+    // Check if a variant from the same group is already on Uma
+    const existingVariant = getGroupVariantOnUma(skillName)
+    const existingVariantOrder = existingVariant
+        ? getSkillOrder(existingVariant)
+        : 0
+    const newSkillOrder = getSkillOrder(skillName)
+
+    if (existingVariant) {
+        // Refund the existing variant's cost
+        const existingCost = getSkillCostWithDiscount(existingVariant)
+        if (
+            currentConfig.uma.skillPoints !== undefined &&
+            currentConfig.uma.skillPoints !== null
+        ) {
+            currentConfig.uma.skillPoints += existingCost
+        }
+
+        // If existing was basic (higher order) and we're adding upgraded (lower order)
+        // The basic stays hidden, no need to return to table
+        // If existing was upgraded and we're adding basic, return upgraded to table
+        if (existingVariantOrder < newSkillOrder) {
+            // Existing is upgraded, new is basic - return upgraded to table with full stats
+            void returnSkillToResultsTable(existingVariant)
+        }
+
+        // Replace the existing variant with the new skill
+        const idx = currentConfig.uma.skills.indexOf(existingVariant)
+        if (idx !== -1) {
+            currentConfig.uma.skills[idx] = skillName
+        }
+    } else {
+        // No variant on Uma, just add the skill
+        currentConfig.uma.skills.push(skillName)
+    }
+
+    // Deduct from skill points
+    if (
+        currentConfig.uma.skillPoints !== undefined &&
+        currentConfig.uma.skillPoints !== null
+    ) {
+        currentConfig.uma.skillPoints -= cost
+    }
+
+    // Update upgraded skill stats if adding basic skill (show incremental)
+    const basicVariant = getBasicVariant(skillName)
+    if (!basicVariant) {
+        // This is a basic skill (or has no variants), update upgraded skills
+        updateUpgradedSkillsForBasicSkill(skillName)
+    }
+
+    // Remove from results table
+    resultsMap.delete(skillName)
+    selectedSkills.delete(skillName)
+
+    // If adding upgraded skill, also hide basic from results
+    if (basicVariant) {
+        resultsMap.delete(basicVariant)
+        selectedSkills.delete(basicVariant)
+    }
+
+    // Re-render
+    refreshResultsCosts()
+    renderUma()
+    renderSkills()
+    autoSave()
+}
+
+function removeSkillFromUma(skillName: string): void {
+    if (!currentConfig?.uma?.skills) return
+
+    const skillIndex = currentConfig.uma.skills.indexOf(skillName)
+    if (skillIndex === -1) return
+
+    // Refund skill cost
+    const skillCost = getSkillCostWithDiscount(skillName)
+    currentConfig.uma.skills.splice(skillIndex, 1)
+    if (
+        currentConfig.uma.skillPoints !== undefined &&
+        currentConfig.uma.skillPoints !== null
+    ) {
+        currentConfig.uma.skillPoints += skillCost
+    }
+
+    // Return skill to results table (if it has a discount)
+    void returnSkillToResultsTable(skillName)
+
+    // Check if this was a basic skill - if so, restore upgraded skill full stats
+    const upgradedVariant = getUpgradedVariant(skillName)
+    if (upgradedVariant) {
+        // This is a basic skill (has an upgraded variant), restore upgraded skills
+        restoreUpgradedSkillsForBasicSkill(skillName)
+    }
+
+    // If this was an upgraded skill, also show basic skill in results again
+    const basicVariant = getBasicVariant(skillName)
+    if (basicVariant) {
+        void returnSkillToResultsTable(basicVariant)
+    }
+
+    // Refresh costs since Uma skills changed
+    refreshResultsCosts()
+    renderResultsTable()
+    renderUma()
+    renderSkills()
+    autoSave()
+}
+
 async function saveConfig(): Promise<void> {
     if (!currentConfigFile || !currentConfig) return
 
@@ -1975,13 +2826,21 @@ function autoSave(): void {
     }, 500)
 }
 
-async function runCalculations(): Promise<void> {
+async function runCalculations(clearExisting = true): Promise<void> {
     if (!currentConfigFile) return
     const button = document.getElementById('run-button') as HTMLButtonElement
-    const output = document.getElementById('terminal-output') as HTMLPreElement
-    if (!button || !output) return
+    const countEl = document.getElementById('results-count')
+    if (!button) return
     button.disabled = true
-    output.textContent = 'Running calculations...\n'
+
+    if (clearExisting) {
+        // Clear previous results and cache, show calculating state
+        resultsMap.clear()
+        selectedSkills.clear()
+        calculatedResultsCache.clear()
+    }
+    if (countEl) countEl.textContent = 'Running calculations...'
+    renderResultsTable()
 
     if (saveTimeout) {
         clearTimeout(saveTimeout)
@@ -1993,7 +2852,7 @@ async function runCalculations(): Promise<void> {
 
     try {
         const response = await fetch(
-            `/api/run?configFile=${encodeURIComponent(currentConfigFile)}`,
+            `/api/simulate?configFile=${encodeURIComponent(currentConfigFile)}`,
             {
                 method: 'GET',
             },
@@ -2018,7 +2877,10 @@ async function runCalculations(): Promise<void> {
                 const err = readError as Error
                 console.error('Error reading stream:', readError)
                 button.disabled = false
-                output.textContent += `\n\nError reading stream: ${err.message}`
+                showToast({
+                    type: 'error',
+                    message: `Error reading stream: ${err.message}`,
+                })
                 break
             }
 
@@ -2033,59 +2895,66 @@ async function runCalculations(): Promise<void> {
                     try {
                         const data = JSON.parse(line.slice(6)) as {
                             type: string
-                            data?: string
-                            code?: number | null
-                            signal?: string
-                            output?: string
+                            phase?: string
+                            result?: SkillResult
+                            results?: SkillResult[]
                             error?: string
+                            info?: string
                         }
                         if (data.type === 'started') {
-                        } else if (data.type === 'output') {
-                            output.textContent += data.data || ''
-                            output.scrollTop = output.scrollHeight
-                        } else if (data.type === 'warning') {
-                            // Show warnings prominently via toast
-                            const warningText = (data.data || '').trim()
-                            if (warningText) {
-                                // Extract meaningful warning message
-                                const lines = warningText
-                                    .split('\n')
-                                    .filter((l) => l.trim())
-                                for (const line of lines) {
-                                    showToast({
-                                        type: 'warning',
-                                        message: line.trim(),
+                            // Calculation started
+                        } else if (data.type === 'phase') {
+                            // Phase update - could show in UI if desired
+                            if (countEl && data.phase) {
+                                countEl.textContent = data.phase
+                            }
+                        } else if (data.type === 'info') {
+                            // Info message
+                            if (data.info) {
+                                showToast({ type: 'info', message: data.info })
+                            }
+                        } else if (data.type === 'result' && data.result) {
+                            // Individual skill result - add to map
+                            calculatedResultsCache.set(
+                                data.result.skill,
+                                data.result,
+                            )
+                            resultsMap.set(data.result.skill, {
+                                ...data.result,
+                                status: 'fresh',
+                            })
+                            renderResultsTable()
+                        } else if (data.type === 'complete') {
+                            button.disabled = false
+                            lastCalculationTime = new Date()
+
+                            // Update with final sorted results
+                            if (data.results) {
+                                for (const result of data.results) {
+                                    calculatedResultsCache.set(
+                                        result.skill,
+                                        result,
+                                    )
+                                    resultsMap.set(result.skill, {
+                                        ...result,
+                                        status: 'fresh',
                                     })
                                 }
                             }
-                        } else if (data.type === 'done') {
-                            button.disabled = false
-                            if (
-                                data.code !== null &&
-                                data.code !== undefined &&
-                                data.code !== 0
-                            ) {
-                                output.textContent += `\n\nProcess exited with code ${data.code}`
-                            } else if (data.code === null) {
-                                if (data.signal) {
-                                    output.textContent += `\n\nProcess terminated by signal: ${data.signal}`
-                                } else if (
-                                    !data.output ||
-                                    data.output.trim().length === 0
-                                ) {
-                                    output.textContent += `\n\nProcess exited without output. Make sure cli.js is built (run 'npm run build') and all dependencies are available.`
-                                }
-                            }
+
+                            renderResultsTable()
                         } else if (data.type === 'error') {
                             button.disabled = false
-                            output.textContent += `\n\nError: ${data.error || 'Unknown error'}`
                             showToast({
                                 type: 'error',
                                 message: data.error || 'Simulation error',
                             })
                         }
                     } catch {
-                        // Ignore SSE parse errors (typically incomplete chunks)
+                        // Ignore keepalive messages, log unexpected parse errors
+                        if (!line.includes('keepalive')) {
+                            console.warn('SSE parse error:', line)
+                        }
                     }
                 }
             }
@@ -2093,7 +2962,7 @@ async function runCalculations(): Promise<void> {
     } catch (error) {
         const err = error as Error
         button.disabled = false
-        output.textContent += `\n\nError: ${err.message}`
+        showToast({ type: 'error', message: `Error: ${err.message}` })
     }
 }
 
@@ -2115,6 +2984,12 @@ function resetUmaSkills(): void {
             }
         })
     }
+
+    // Clear results and cache since all discounts changed
+    resultsMap.clear()
+    selectedSkills.clear()
+    calculatedResultsCache.clear()
+    renderResultsTable()
 
     renderUma()
     renderSkills()
@@ -2185,7 +3060,7 @@ if (duplicateButton) {
 
 const runButton = document.getElementById('run-button')
 if (runButton) {
-    runButton.addEventListener('click', runCalculations)
+    runButton.addEventListener('click', () => runCalculations())
 }
 
 const resetButton = document.getElementById('reset-button')
@@ -2308,6 +3183,9 @@ function setupSkillsContainerDelegation(): void {
                     }
                 }
             }
+
+            // Update results table based on discount change
+            updateResultsForDiscountChange(skillName, currentDiscount, discount)
         }
 
         renderSkills()
@@ -2315,5 +3193,394 @@ function setupSkillsContainerDelegation(): void {
     })
 }
 
+// Update results table when discount changes
+function updateResultsForDiscountChange(
+    skillName: string,
+    oldDiscount: number | null | undefined,
+    newDiscount: number | null,
+): void {
+    const hadDiscount = oldDiscount !== null && oldDiscount !== undefined
+    const hasDiscount = newDiscount !== null
+
+    if (hadDiscount && !hasDiscount) {
+        // discount -> None: remove skill from table
+        resultsMap.delete(skillName)
+        selectedSkills.delete(skillName)
+        renderResultsTable()
+    } else if (!hadDiscount && hasDiscount) {
+        // None -> discount: add skill as pending (needs calculation)
+        addPendingSkillToResults(skillName, newDiscount)
+    } else if (hadDiscount && hasDiscount && oldDiscount !== newDiscount) {
+        // discount -> discount: update cost and mean/cost
+        const existing = resultsMap.get(skillName)
+        if (existing && existing.status !== 'pending') {
+            const newCost = getSkillCostWithDiscount(skillName)
+            existing.cost = newCost
+            existing.discount = newDiscount
+            existing.meanLengthPerCost =
+                newCost > 0 ? existing.meanLength / newCost : 0
+            renderResultsTable()
+        }
+    }
+}
+
+/**
+ * Recalculate all costs in resultsMap when Uma's skills change.
+ * This is needed because prerequisite costs depend on what skills Uma has.
+ */
+function refreshResultsCosts(): void {
+    for (const [skillName, result] of resultsMap) {
+        if (result.status !== 'pending') {
+            const newCost = getSkillCostWithDiscount(skillName)
+            result.cost = newCost
+            result.meanLengthPerCost =
+                newCost > 0 ? result.meanLength / newCost : 0
+        }
+    }
+    renderResultsTable()
+}
+
+/**
+ * When a basic skill is added/removed from Uma, mark upgraded skills for recalculation.
+ * The frontend cache is keyed only by skill name (not Uma state), so we must invalidate it.
+ * The server-side cache IS keyed by config hash (including Uma skills) and will return
+ * fresh results for the new Uma state.
+ */
+function recalculateUpgradedSkillsForBasicChange(basicSkillName: string): void {
+    if (!skillmeta || !skillnames || !currentConfig?.skills) return
+
+    const basicSkillId = findSkillId(basicSkillName)
+    if (!basicSkillId) return
+
+    const basicMeta = skillmeta[basicSkillId]
+    if (!basicMeta?.groupId) return
+
+    const basicGroupId = basicMeta.groupId
+    const basicOrder = basicMeta.order ?? 0
+
+    // Find upgraded skills (lower order = upgraded) in the same group
+    for (const [upgradedSkillId, upgradedMeta] of Object.entries(skillmeta)) {
+        if (
+            upgradedMeta.groupId === basicGroupId &&
+            (upgradedMeta.order ?? 0) < basicOrder
+        ) {
+            const upgradedSkillNames = skillnames[upgradedSkillId]
+            if (!upgradedSkillNames) continue
+
+            const upgradedSkillName = upgradedSkillNames[0]
+
+            // Only recalculate if the skill has a discount (is in the skill list)
+            const skillConfig = currentConfig.skills[upgradedSkillName]
+            if (
+                !skillConfig ||
+                skillConfig.discount === null ||
+                skillConfig.discount === undefined
+            ) {
+                continue
+            }
+
+            // Invalidate frontend cache (keyed only by skill name, not Uma state)
+            calculatedResultsCache.delete(upgradedSkillName)
+
+            // Mark as pending for recalculation - server will return fresh results
+            if (resultsMap.has(upgradedSkillName)) {
+                addPendingSkillToResults(
+                    upgradedSkillName,
+                    skillConfig.discount,
+                )
+            }
+        }
+    }
+}
+
+// Aliases for clarity at call sites
+// Semantic aliases for the same operation: both add and remove of a basic skill
+// require recalculating upgraded variants. When basic skill is added, upgraded skills
+// show incremental benefit; when removed, they show full standalone benefit.
+// The recalculation logic is identical - mark upgraded skills as pending for re-simulation.
+const updateUpgradedSkillsForBasicSkill =
+    recalculateUpgradedSkillsForBasicChange
+const restoreUpgradedSkillsForBasicSkill =
+    recalculateUpgradedSkillsForBasicChange
+
+/**
+ * Add a skill back to the results table when removed from Uma.
+ * Checks frontend cache first, then server cache; otherwise adds as pending.
+ * Only adds if the skill has a discount set.
+ */
+async function returnSkillToResultsTable(skillName: string): Promise<void> {
+    if (!currentConfig?.skills) return
+
+    const skillConfig = currentConfig.skills[skillName]
+    if (
+        !skillConfig ||
+        skillConfig.discount === null ||
+        skillConfig.discount === undefined
+    ) {
+        return
+    }
+
+    // Check frontend cache first (most likely to have recent results)
+    const cachedResult = calculatedResultsCache.get(skillName)
+    if (cachedResult) {
+        // Recalculate cost with current discount and prerequisites
+        const cost = getSkillCostWithDiscount(skillName)
+        resultsMap.set(skillName, {
+            ...cachedResult,
+            skill: skillName,
+            cost,
+            discount: skillConfig.discount,
+            meanLengthPerCost: cost > 0 ? cachedResult.meanLength / cost : 0,
+            status: 'cached',
+        })
+        renderResultsTable()
+        return
+    }
+
+    // Not in frontend cache, add as pending (will trigger auto-calculation)
+    addPendingSkillToResults(skillName, skillConfig.discount)
+}
+
+function addPendingSkillToResults(skillName: string, discount: number): void {
+    const cost = getSkillCostWithDiscount(skillName)
+    resultsMap.set(skillName, {
+        skill: skillName,
+        cost,
+        discount,
+        numSimulations: 0,
+        meanLength: 0,
+        medianLength: 0,
+        meanLengthPerCost: 0,
+        minLength: 0,
+        maxLength: 0,
+        ciLower: 0,
+        ciUpper: 0,
+        status: 'pending',
+    })
+    renderResultsTable()
+    // Schedule auto-calculation for pending skills
+    scheduleAutoCalculation()
+}
+
+// Debounced auto-calculation for pending skills
+let autoCalculationTimeout: ReturnType<typeof setTimeout> | null = null
+let autoCalculationInProgress = false
+
+function scheduleAutoCalculation(): void {
+    if (autoCalculationTimeout) {
+        clearTimeout(autoCalculationTimeout)
+    }
+    autoCalculationTimeout = setTimeout(() => {
+        autoCalculationTimeout = null
+        void calculatePendingSkills()
+    }, 300)
+}
+
+async function calculatePendingSkills(): Promise<void> {
+    // Prevent overlapping calculations
+    if (autoCalculationInProgress) return
+    autoCalculationInProgress = true
+
+    try {
+        // Check if there are any pending skills
+        const pendingSkills = Array.from(resultsMap.values()).filter(
+            (r) => r.status === 'pending',
+        )
+        if (pendingSkills.length === 0) return
+
+        // For each pending skill, check frontend cache first
+        for (const pending of pendingSkills) {
+            const cachedResult = calculatedResultsCache.get(pending.skill)
+            if (cachedResult) {
+                const cost = getSkillCostWithDiscount(pending.skill)
+                resultsMap.set(pending.skill, {
+                    ...cachedResult,
+                    skill: pending.skill,
+                    cost,
+                    discount: pending.discount,
+                    meanLengthPerCost:
+                        cost > 0 ? cachedResult.meanLength / cost : 0,
+                    status: 'cached',
+                })
+            }
+        }
+
+        renderResultsTable()
+
+        // If still have pending skills after cache check, they need full calculation
+        const stillPending = Array.from(resultsMap.values()).filter(
+            (r) => r.status === 'pending',
+        )
+        if (stillPending.length > 0) {
+            // Run selective calculation for only the pending skills
+            const pendingSkillNames = stillPending.map((r) => r.skill)
+            await runSelectiveCalculations(pendingSkillNames)
+        }
+    } finally {
+        autoCalculationInProgress = false
+        // Check if more skills became pending while we were calculating
+        const newPending = Array.from(resultsMap.values()).filter(
+            (r) => r.status === 'pending',
+        )
+        if (newPending.length > 0) {
+            scheduleAutoCalculation()
+        }
+    }
+}
+
+/**
+ * Run calculations for specific skills only.
+ * More efficient than runCalculations(false) when only a few skills need updating.
+ */
+async function runSelectiveCalculations(skillNames: string[]): Promise<void> {
+    if (!currentConfigFile || skillNames.length === 0) return
+
+    // Save config first (Uma state may have changed)
+    if (saveTimeout) {
+        clearTimeout(saveTimeout)
+    }
+    if (pendingSavePromise) {
+        await pendingSavePromise
+    }
+    await saveConfig()
+
+    try {
+        const skillsParam = encodeURIComponent(skillNames.join(','))
+        const response = await fetch(
+            `/api/simulate?configFile=${encodeURIComponent(currentConfigFile)}&skills=${skillsParam}`,
+            { method: 'GET' },
+        )
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        if (!response.body) {
+            throw new Error('Response body is null')
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+
+        while (true) {
+            let result: ReadableStreamReadResult<Uint8Array>
+            try {
+                result = await reader.read()
+            } catch (readError) {
+                const err = readError as Error
+                console.error('Error reading stream:', readError)
+                showToast({
+                    type: 'error',
+                    message: `Error reading stream: ${err.message}`,
+                })
+                break
+            }
+
+            if (result.done) break
+
+            const chunk = decoder.decode(result.value, { stream: true })
+            const lines = chunk.split('\n')
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6))
+                        if (data.type === 'result' && data.result) {
+                            calculatedResultsCache.set(
+                                data.result.skill,
+                                data.result,
+                            )
+                            resultsMap.set(data.result.skill, {
+                                ...data.result,
+                                status: 'fresh',
+                            })
+                            renderResultsTable()
+                        } else if (data.type === 'batch' && data.results) {
+                            for (const result of data.results) {
+                                calculatedResultsCache.set(result.skill, result)
+                                resultsMap.set(result.skill, {
+                                    ...result,
+                                    status: 'fresh',
+                                })
+                            }
+                            renderResultsTable()
+                        } else if (data.type === 'error') {
+                            console.error(
+                                'Selective calculation error:',
+                                data.error,
+                            )
+                            // Mark skills as error state
+                            for (const skillName of skillNames) {
+                                const existing = resultsMap.get(skillName)
+                                if (existing?.status === 'pending') {
+                                    resultsMap.set(skillName, {
+                                        ...existing,
+                                        status: 'error',
+                                        errorMessage: data.error,
+                                    } as SkillResultWithStatus)
+                                }
+                            }
+                            renderResultsTable()
+                        }
+                    } catch {
+                        // Ignore keepalive messages, log unexpected parse errors
+                        if (!line.includes('keepalive')) {
+                            console.warn('SSE parse error:', line)
+                        }
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        const err = error as Error
+        console.error('Selective calculation error:', err)
+        showToast({
+            type: 'error',
+            message: `Calculation failed: ${err.message}`,
+        })
+    }
+}
+
 setupSkillsContainerDelegation()
+
+// Set up results table sorting
+function setupResultsTableSorting(): void {
+    const table = document.getElementById('results-table')
+    if (!table) return
+
+    table.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement
+        const sortKey = target.dataset.sort as keyof SkillResult | undefined
+        if (!sortKey) return
+
+        if (sortColumn === sortKey) {
+            sortDirection = sortDirection === 'asc' ? 'desc' : 'asc'
+        } else {
+            sortColumn = sortKey
+            sortDirection = sortKey === 'skill' ? 'asc' : 'desc'
+        }
+        renderResultsTable()
+    })
+}
+
+// Set up select-all checkbox
+function setupSelectAllCheckbox(): void {
+    const checkbox = document.getElementById(
+        'select-all-checkbox',
+    ) as HTMLInputElement | null
+    if (!checkbox) return
+
+    checkbox.addEventListener('change', () => {
+        const allSkills = Array.from(resultsMap.keys())
+        if (checkbox.checked) {
+            for (const s of allSkills) selectedSkills.add(s)
+        } else {
+            selectedSkills.clear()
+        }
+        renderResultsTable()
+    })
+}
+
+setupResultsTableSorting()
+setupSelectAllCheckbox()
 loadConfigFiles()
